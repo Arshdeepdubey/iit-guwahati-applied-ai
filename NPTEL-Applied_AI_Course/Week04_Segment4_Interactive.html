@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DataLoader Deep Dive — Week 04 · Segment 4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f0e8;--ink:#1a1410;--rust:#c0440a;--amber:#d97316;--teal:#0d7377;
+  --sage:#4a7c59;--navy:#1e3a5f;--stone:#8a7e72;--cream:#ede8dc;
+  --paper:#faf7f2;--border:#d6cfc4;--shadow:rgba(26,20,16,.12);
+  --dark:#111827;--dark2:#1f2937;--dark3:#374151;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Lora',serif;background:var(--bg);color:var(--ink);
+  background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(201,68,10,.05),transparent);}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 80px;}
+
+/* HEADER */
+header{padding:52px 0 44px;border-bottom:2px solid var(--ink);
+  display:grid;grid-template-columns:1fr auto;align-items:end;gap:24px;}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--rust);margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;}
+.eyebrow::before{content:'';display:block;width:28px;height:2px;background:var(--rust);}
+h1{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(2rem,5vw,3.8rem);
+  line-height:1.0;letter-spacing:-.02em;}
+h1 em{font-style:italic;color:var(--rust);font-family:'Lora',serif;}
+.hdr-meta{font-size:13px;color:var(--stone);line-height:1.6;max-width:300px;text-align:right;}
+
+/* TABS */
+.tab-row{display:flex;border-bottom:2px solid var(--ink);position:sticky;top:0;
+  z-index:200;background:var(--bg);overflow-x:auto;}
+.tab{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;padding:14px 20px;border:none;background:none;
+  color:var(--stone);cursor:pointer;transition:all .2s;
+  border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;}
+.tab:hover{color:var(--ink);}
+.tab.active{color:var(--rust);border-bottom-color:var(--rust);font-weight:600;}
+.panel{display:none;padding:44px 0 0;animation:fadeIn .3s ease;}
+.panel.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* SECTION */
+.shead{font-family:'Syne',sans-serif;font-weight:700;font-size:1.55rem;
+  letter-spacing:-.01em;margin-bottom:8px;}
+.ssub{font-size:13.5px;color:var(--stone);margin-bottom:32px;max-width:640px;line-height:1.65;}
+
+/* CARDS */
+.card{background:var(--paper);border:1px solid var(--border);border-radius:4px;
+  padding:22px;box-shadow:2px 3px 0 var(--shadow);}
+.card-rust{border-left:4px solid var(--rust);}
+.card-teal{border-left:4px solid var(--teal);}
+.card-sage{border-left:4px solid var(--sage);}
+.card-amber{border-left:4px solid var(--amber);}
+.card-navy{border-left:4px solid var(--navy);}
+
+/* UTIL */
+.tag{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  letter-spacing:.07em;text-transform:uppercase;padding:3px 8px;border-radius:3px;font-weight:600;}
+.tag-rust{background:#fef2ed;color:var(--rust);border:1px solid #f9c3aa;}
+.tag-teal{background:#f0f9f9;color:var(--teal);border:1px solid #99d6d7;}
+.tag-amber{background:#fffbeb;color:var(--amber);border:1px solid #fcd34d;}
+.tag-sage{background:#f0faf4;color:var(--sage);border:1px solid #86c99a;}
+.tag-navy{background:#eff6ff;color:var(--navy);border:1px solid #93c5fd;}
+code{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--cream);
+  padding:2px 6px;border-radius:3px;}
+.mt{margin-top:24px;} .mt2{margin-top:48px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+@media(max-width:680px){.g2,.g3{grid-template-columns:1fr;}}
+
+/* CODE BLOCK */
+.codeblock{background:#1a1410;border-radius:6px;padding:20px;
+  font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.85;
+  color:#d6cfc4;overflow-x:auto;}
+.codeblock .kw{color:#c084fc;}.codeblock .fn{color:#60a5fa;}
+.codeblock .st{color:#fbbf24;}.codeblock .cm{color:#6b7280;font-style:italic;}
+.codeblock .nu{color:#4ade80;}.codeblock .ty{color:#34d399;}
+.codeblock .hl{color:#fb923c;font-weight:600;}
+
+/* CHECKLIST */
+.ck{list-style:none;display:flex;flex-direction:column;gap:9px;}
+.ck li{display:flex;gap:9px;font-size:13.5px;line-height:1.55;align-items:flex-start;}
+.ck li::before{content:"✓";color:var(--sage);font-weight:700;flex-shrink:0;margin-top:1px;}
+.ck li.w::before{content:"⚠";color:var(--amber);}
+.ck li.x::before{content:"✗";color:var(--rust);}
+
+/* ════════════════ P1: PIPELINE ════════════════ */
+.pipe-canvas{background:var(--dark);border-radius:10px;padding:28px 20px;margin-bottom:20px;overflow-x:auto;}
+.pipe-label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:#6b7280;margin-bottom:24px;text-align:center;}
+.pipe-row{display:flex;align-items:center;justify-content:flex-start;gap:0;min-width:760px;}
+.pipe-stage{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
+.pipe-box{background:var(--dark2);border:1.5px solid var(--dark3);border-radius:8px;
+  padding:14px 10px;text-align:center;width:96px;cursor:pointer;
+  transition:all .25s;position:relative;}
+.pipe-box:hover,.pipe-box.on{border-color:var(--rust);background:#2d1810;}
+.pipe-box.on::after{content:'▼';position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);
+  color:var(--rust);font-size:14px;}
+.p-icon{font-size:22px;margin-bottom:6px;}
+.p-name{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#d1d5db;letter-spacing:.05em;}
+.p-sub{font-size:9px;color:#6b7280;margin-top:2px;}
+.pipe-arr{width:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.stage-info{background:var(--paper);border:2px solid var(--rust);border-radius:6px;
+  padding:22px;margin-top:28px;display:none;}
+.stage-info.on{display:block;animation:fadeIn .25s ease;}
+.stage-info h3{font-family:'Syne',sans-serif;font-weight:700;font-size:1.15rem;
+  color:var(--rust);margin-bottom:10px;}
+.stage-info p{font-size:13.5px;line-height:1.68;margin-bottom:10px;}
+.tl-wrap{background:var(--dark);border-radius:8px;padding:22px;margin-top:22px;}
+.tl-label{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;
+  letter-spacing:.1em;color:#6b7280;margin-bottom:18px;}
+.tl-track{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.tl-name{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ca3af;
+  width:80px;flex-shrink:0;text-align:right;}
+.tl-bar{flex:1;height:26px;background:#111827;border-radius:4px;position:relative;overflow:hidden;}
+.tl-seg{position:absolute;top:3px;height:20px;border-radius:3px;display:flex;
+  align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;
+  font-size:9px;color:#fff;white-space:nowrap;padding:0 4px;}
+
+/* ════════════════ P2: BUILDER ════════════════ */
+.bl-grid{display:grid;grid-template-columns:350px 1fr;gap:22px;}
+@media(max-width:820px){.bl-grid{grid-template-columns:1fr;}}
+.param{background:var(--paper);border:1px solid var(--border);border-radius:4px;
+  padding:14px;cursor:pointer;transition:border-color .2s;margin-bottom:10px;}
+.param:hover{border-color:var(--rust);}
+.param.on{border-color:var(--rust);background:#fff9f6;}
+.p-hdr{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.p-key{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--ink);}
+.p-badge{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--rust);
+  background:#fef2ed;padding:2px 8px;border-radius:12px;flex-shrink:0;}
+.p-desc{font-size:12px;color:var(--stone);margin-top:5px;line-height:1.55;}
+.p-ctrl{margin-top:10px;display:none;}
+.param.on .p-ctrl{display:block;}
+input[type=range]{width:100%;-webkit-appearance:none;height:4px;background:var(--border);border-radius:2px;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+  border-radius:50%;background:var(--rust);cursor:pointer;}
+.rg{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+.rb{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 12px;
+  border-radius:16px;border:1px solid var(--border);background:var(--paper);
+  cursor:pointer;transition:all .2s;color:var(--ink);}
+.rb.on{background:var(--rust);color:#fff;border-color:var(--rust);}
+.code-out{background:#1a1410;border-radius:6px;padding:20px;font-family:'IBM Plex Mono',monospace;
+  font-size:12px;line-height:1.9;color:#d6cfc4;overflow-x:auto;}
+.code-out .kw{color:#c084fc;}.code-out .fn{color:#60a5fa;}
+.code-out .val{color:#4ade80;}.code-out .cm{color:#6b7280;font-style:italic;}
+.code-out .hi{background:rgba(192,68,10,.22);border-radius:2px;padding:0 2px;}
+.imp{margin-top:16px;}
+.imp-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.imp-lbl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--stone);width:130px;flex-shrink:0;}
+.imp-bw{flex:1;height:12px;background:var(--cream);border-radius:6px;overflow:hidden;}
+.imp-bf{height:100%;border-radius:6px;transition:width .5s ease;}
+.imp-v{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+  width:38px;text-align:right;color:var(--ink);}
+
+/* ════════════════ P3: DATASET ════════════════ */
+.pt-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;}
+.pt{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;padding:8px 14px;border:1px solid var(--border);
+  border-radius:4px;background:var(--paper);cursor:pointer;color:var(--stone);transition:all .2s;}
+.pt:hover{color:var(--ink);border-color:var(--ink);}
+.pt.on{background:var(--ink);color:var(--bg);border-color:var(--ink);}
+.pc{display:none;} .pc.on{display:block;animation:fadeIn .3s ease;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+@media(max-width:680px){.two{grid-template-columns:1fr;}}
+
+/* ════════════════ P4: TRANSFORMS ════════════════ */
+.tf-layout{display:grid;grid-template-columns:200px 1fr;gap:28px;align-items:start;}
+@media(max-width:680px){.tf-layout{grid-template-columns:1fr;}}
+canvas{border-radius:6px;border:2px solid var(--border);}
+.tf-item{border:1px solid var(--border);border-radius:4px;padding:12px;
+  cursor:pointer;transition:all .2s;background:var(--paper);margin-bottom:8px;}
+.tf-item:hover{border-color:var(--teal);}
+.tf-item.on{border-color:var(--teal);background:#f0f9f9;}
+.tf-nm{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:var(--teal);}
+.tf-ds{font-size:11px;color:var(--stone);margin-top:3px;line-height:1.4;}
+.tf-md{font-size:9px;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;
+  text-transform:uppercase;margin-top:4px;}
+.tf-md.tr{color:var(--rust);} .tf-md.bo{color:var(--sage);} .tf-md.va{color:var(--navy);}
+.seq{display:flex;align-items:center;gap:8px;background:var(--cream);border-radius:4px;
+  padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;margin-bottom:4px;}
+.seq-n{color:var(--stone);width:14px;flex-shrink:0;}
+.seq-nm{color:var(--teal);font-weight:600;flex:1;}
+.seq-b{font-size:9px;padding:2px 6px;border-radius:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.seq-b.tr{background:#fef2ed;color:var(--rust);}
+.seq-b.bo{background:#f0faf4;color:var(--sage);}
+.seq-b.va{background:#eff6ff;color:var(--navy);}
+
+/* ════════════════ P5: BOTTLENECK ════════════════ */
+.bk-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+@media(max-width:700px){.bk-grid{grid-template-columns:1fr;}}
+.gpu-wrap{background:var(--dark);border-radius:8px;padding:20px;}
+.gpu-title{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;
+  letter-spacing:.1em;color:#6b7280;margin-bottom:12px;}
+.gpu-chart{height:88px;background:#111827;border-radius:4px;overflow:hidden;
+  display:flex;align-items:flex-end;gap:3px;padding:4px;}
+.gpu-bar{flex:1;border-radius:2px 2px 0 0;min-width:5px;transition:height .3s;}
+.gpu-stats{display:flex;justify-content:space-between;margin-top:10px;}
+.gstat .gl{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#6b7280;
+  text-transform:uppercase;letter-spacing:.06em;}
+.gstat .gv{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;
+  display:block;line-height:1.1;margin-top:2px;}
+.gv.ok{color:#4ade80;} .gv.bad{color:#f87171;}
+.sc-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.sc-btn{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:7px 13px;border:1px solid var(--border);
+  border-radius:4px;background:var(--paper);cursor:pointer;transition:all .2s;color:var(--stone);}
+.sc-btn:hover{border-color:var(--ink);color:var(--ink);}
+.sc-btn.on{background:var(--rust);color:#fff;border-color:var(--rust);}
+.dx-step{background:var(--paper);border:1px solid var(--border);border-radius:4px;
+  padding:14px;cursor:pointer;transition:border-color .2s;margin-bottom:10px;}
+.dx-step:hover,.dx-step.on{border-color:var(--teal);}
+.dx-hdr{display:flex;align-items:center;gap:10px;}
+.dx-n{width:28px;height:28px;border-radius:50%;background:var(--teal);color:#fff;
+  font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.dx-title{font-size:13.5px;font-weight:600;}
+.dx-cmd{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--teal);margin-top:3px;}
+.dx-body{font-size:12.5px;color:var(--stone);line-height:1.6;margin-top:8px;display:none;}
+.dx-step.on .dx-body{display:block;}
+
+/* ════════════════ P6: MEMORY ════════════════ */
+.mc-grid{display:grid;grid-template-columns:280px 1fr;gap:22px;}
+@media(max-width:700px){.mc-grid{grid-template-columns:1fr;}}
+.ig{background:var(--paper);border:1px solid var(--border);border-radius:4px;
+  padding:14px;margin-bottom:10px;}
+.il{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--stone);margin-bottom:8px;display:block;}
+.ir{display:flex;align-items:center;gap:10px;}
+.ir input[type=range]{flex:1;}
+.nd{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;
+  color:var(--rust);min-width:46px;}
+.mb-card{background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:20px;}
+.mb-seg{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+.mb-dot{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
+.mb-lbl{font-size:12.5px;flex:1;}
+.mb-bw{width:150px;height:14px;background:var(--cream);border-radius:6px;overflow:hidden;}
+.mb-bf{height:100%;border-radius:6px;transition:width .5s ease;}
+.mb-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;
+  min-width:58px;text-align:right;}
+.mb-tot{margin-top:14px;padding-top:14px;border-top:2px solid var(--ink);
+  display:flex;justify-content:space-between;align-items:baseline;}
+.mb-tot-l{font-family:'Syne',sans-serif;font-weight:700;}
+.mb-tot-v{font-family:'IBM Plex Mono',monospace;font-size:1.5rem;font-weight:600;color:var(--rust);}
+.shm-warn{margin-top:12px;background:#fef3c7;border:1px solid #f59e0b;
+  border-radius:4px;padding:10px 14px;font-size:12px;line-height:1.5;display:none;}
+.shm-warn.on{display:block;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <div class="eyebrow">NPTEL · Applied Accelerated AI · Week 04 · Segment 4</div>
+    <h1>DataLoader<br><em>&amp; the Data Pipeline</em></h1>
+  </div>
+  <div class="hdr-meta">From raw files on disk to tensors on GPU — every stage, every parameter, every failure mode explained interactively.</div>
+</header>
+
+<div class="tab-row">
+  <button class="tab active" onclick="goTab('pipeline',this)">① Full Pipeline</button>
+  <button class="tab" onclick="goTab('builder',this)">② DL Builder</button>
+  <button class="tab" onclick="goTab('dataset',this)">③ Dataset Patterns</button>
+  <button class="tab" onclick="goTab('transforms',this)">④ Transforms</button>
+  <button class="tab" onclick="goTab('bottleneck',this)">⑤ Bottleneck Dx</button>
+  <button class="tab" onclick="goTab('memory',this)">⑥ Memory Calc</button>
+</div>
+
+<!-- ═══════════════════ P1: PIPELINE ═══════════════════ -->
+<div class="panel active" id="panel-pipeline">
+  <div class="shead">The Complete Data Pipeline</div>
+  <div class="ssub">Every batch travels through seven stages before the GPU can train on it. Click each stage to understand what happens — and where things go wrong.</div>
+
+  <div class="pipe-canvas">
+    <div class="pipe-label">DATA FLOW: DISK → CPU WORKERS → SHARED MEM → PINNED RAM → GPU HBM &nbsp;(click any stage)</div>
+    <div class="pipe-row" id="pipe-row"></div>
+  </div>
+  <div class="stage-info" id="stage-info"></div>
+
+  <div class="tl-wrap mt">
+    <div class="tl-label">TIMELINE — How 2 workers overlap with GPU training (hover bars for details)</div>
+    <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+      <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ca3af">
+        <span style="width:14px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block"></span>Load &amp; transform (Worker: __getitem__ + augmentation)</span>
+      <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ca3af">
+        <span style="width:14px;height:10px;border-radius:2px;background:#d97316;display:inline-block"></span>Collate (stack samples → one batch tensor)</span>
+      <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ca3af">
+        <span style="width:14px;height:10px;border-radius:2px;background:#60a5fa;display:inline-block"></span>PCIe DMA (pinned RAM → GPU HBM, async)</span>
+      <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9ca3af">
+        <span style="width:14px;height:10px;border-radius:2px;background:#4ade80;display:inline-block"></span>GPU training (forward + backward + step)</span>
+    </div>
+    <div id="tl"></div>
+  </div>
+
+  <div class="g3 mt2">
+    <div class="card card-rust">
+      <div class="tag tag-rust" style="margin-bottom:8px">CPU side</div>
+      <p style="font-size:13px;line-height:1.65"><strong>Sampler → BatchSampler</strong> runs in the main process and generates shuffled index lists. Workers never decide order — they only execute <code>__getitem__</code> for assigned indices.</p>
+    </div>
+    <div class="card card-teal">
+      <div class="tag tag-teal" style="margin-bottom:8px">Transfer</div>
+      <p style="font-size:13px;line-height:1.65"><strong>Pinned memory</strong> eliminates the staging copy. <code>non_blocking=True</code> makes the GPU read asynchronously via DMA while Python continues — the transfer is free.</p>
+    </div>
+    <div class="card card-sage">
+      <div class="tag tag-sage" style="margin-bottom:8px">GPU side</div>
+      <p style="font-size:13px;line-height:1.65">Target: SM% &gt; 85%, sustained. GPU trains on batch N while N+1 transfers and N+2 loads. <strong>Zero idle time</strong> when the pipeline is tuned correctly.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ P2: BUILDER ═══════════════════ -->
+<div class="panel" id="panel-builder">
+  <div class="shead">DataLoader Parameter Builder</div>
+  <div class="ssub">Click any parameter to expand it. Adjust the value and watch the code and impact meters update instantly.</div>
+
+  <div class="bl-grid">
+    <div id="param-list"></div>
+    <div>
+      <div class="code-out" id="dl-code"></div>
+      <div class="imp" id="imp-panel"></div>
+      <div class="card card-amber" style="margin-top:16px;font-size:13px;line-height:1.6" id="warn-panel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ P3: DATASET ═══════════════════ -->
+<div class="panel" id="panel-dataset">
+  <div class="shead">Dataset Patterns</div>
+  <div class="ssub">Five real-world Dataset implementations. Each one has a different data source, different constraints, and different pitfalls to avoid.</div>
+  <div class="pt-row" id="pat-tabs"></div>
+  <div id="pat-content"></div>
+</div>
+
+<!-- ═══════════════════ P4: TRANSFORMS ═══════════════════ -->
+<div class="panel" id="panel-transforms">
+  <div class="shead">Image Transforms</div>
+  <div class="ssub">Click any transform to see what it does to the canvas image. Training and validation pipelines must be different — here's exactly why and how.</div>
+
+  <div class="tf-layout">
+    <div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Original</div>
+      <canvas id="orig-cv" width="180" height="180"></canvas>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:.08em;margin-top:14px;margin-bottom:6px" id="tf-lbl">After: —</div>
+      <canvas id="tf-cv" width="180" height="180"></canvas>
+    </div>
+    <div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--stone);margin-bottom:10px">Click a transform →</div>
+      <div id="tf-list"></div>
+    </div>
+  </div>
+
+  <div class="two mt2">
+    <div>
+      <div class="shead" style="font-size:1.05rem;margin-bottom:10px">Training Pipeline</div>
+      <div id="tr-pipeline"></div>
+    </div>
+    <div>
+      <div class="shead" style="font-size:1.05rem;margin-bottom:10px">Validation Pipeline</div>
+      <div id="va-pipeline"></div>
+    </div>
+  </div>
+
+  <div class="mt2">
+    <div class="shead" style="font-size:1.05rem;margin-bottom:6px">Why Normalise?</div>
+    <div class="ssub" style="margin-bottom:14px">Raw pixel values are in [0,1]. Neural networks train faster when inputs have mean≈0 and std≈1. Subtract the ImageNet mean, divide by std — channel by channel.</div>
+    <div class="codeblock">
+<span class="cm"># ImageNet normalisation — always the LAST transform</span>
+T.<span class="fn">Normalize</span>(
+    mean=[<span class="nu">0.485</span>, <span class="nu">0.456</span>, <span class="nu">0.406</span>],  <span class="cm"># R, G, B means across 1.2M ImageNet images</span>
+    std =[<span class="nu">0.229</span>, <span class="nu">0.224</span>, <span class="nu">0.225</span>],  <span class="cm"># R, G, B standard deviations</span>
+)
+<span class="cm"># normalised = (pixel_float - mean) / std  → values roughly in [-2.5, 2.5]</span>
+<span class="cm"># Use YOUR dataset mean/std when NOT fine-tuning an ImageNet pretrained model</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ P5: BOTTLENECK ═══════════════════ -->
+<div class="panel" id="panel-bottleneck">
+  <div class="shead">Diagnose DataLoader Bottlenecks</div>
+  <div class="ssub">GPU utilisation is your single diagnostic signal. Four scenarios showing what each failure mode looks like — and the exact fix for each.</div>
+
+  <div class="sc-row" id="sc-row"></div>
+  <div class="bk-grid">
+    <div>
+      <div class="gpu-wrap">
+        <div class="gpu-title">GPU SM% — nvidia-smi dmon (simulated)</div>
+        <div class="gpu-chart" id="gpu-chart"></div>
+        <div class="gpu-stats">
+          <div class="gstat"><div class="gl">Avg SM%</div><span class="gv" id="g-avg">—</span></div>
+          <div class="gstat"><div class="gl">Status</div><span class="gv" id="g-status">—</span></div>
+          <div class="gstat"><div class="gl">Throughput</div><span class="gv" id="g-thru">—</span></div>
+        </div>
+      </div>
+      <div class="card mt" id="sc-explain" style="font-size:13px;line-height:1.68"></div>
+    </div>
+    <div>
+      <div class="shead" style="font-size:1.05rem;margin-bottom:14px">4-Level Diagnostic Workflow</div>
+      <div id="dx-steps"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ P6: MEMORY ═══════════════════ -->
+<div class="panel" id="panel-memory">
+  <div class="shead">Memory &amp; Shared Memory Calculator</div>
+  <div class="ssub">How much RAM does your DataLoader actually consume — and why does Docker crash without <code>--shm-size</code>?</div>
+
+  <div class="mc-grid">
+    <div id="mc-inputs"></div>
+    <div>
+      <div class="mb-card" id="mc-result"></div>
+      <div class="shm-warn" id="shm-warn"></div>
+      <div class="card card-amber mt">
+        <div class="tag tag-amber" style="margin-bottom:8px">Why /dev/shm matters</div>
+        <p style="font-size:13px;line-height:1.65;margin-bottom:14px">DataLoader workers place finished batches in <strong>shared memory</strong> (<code>/dev/shm</code>), a RAM-backed tmpfs. Each prefetched batch occupies it until the main process reads it. Docker defaults to <strong>64 MB</strong> — just 1–2 ImageNet batches. The error appears as a cryptic worker crash, never "out of shared memory".</p>
+        <div class="codeblock">
+<span class="cm"># Fix 1: docker run</span>
+docker run --gpus all <span class="hl">--shm-size=16g</span> myimage python train.py
+
+<span class="cm"># Fix 2: docker-compose.yml</span>
+services:
+  trainer:
+    image: myimage
+    <span class="hl">shm_size: '16gb'</span>
+
+<span class="cm"># Fix 3: mount explicit tmpfs</span>
+docker run --tmpfs /dev/shm:rw,<span class="hl">size=16g</span> myimage python train.py
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+<script>
+// ══════════════════════════════════════════════════
+// PANEL 1: PIPELINE
+// ══════════════════════════════════════════════════
+const STAGES=[
+  {id:'disk',ic:'💿',nm:'Storage',sub:'Disk/S3/NFS',
+   title:'Stage 1 — Storage: Where Your Data Lives',
+   body:`Raw data lives on local disk (JPEG files, CSV rows, HDF5 arrays) or remote storage (S3, GCS, NFS). Your <code>Dataset.__getitem__</code> method handles reading — the DataLoader itself never touches storage directly.<br><br>
+   <strong>What goes wrong here:</strong><br>
+   • NFS latency: each <code>open()</code> crosses the network — ms instead of µs<br>
+   • Many small JPEG files: random reads are slow on spinning HDD<br>
+   • HDD seek time: &gt;5ms per read × 512 batch = 2.5s of pure seeking<br><br>
+   <strong>Diagnostic:</strong> <code>iostat -x 1</code> → await &gt;5ms = storage bottleneck.<br>
+   <strong>Fix:</strong> Cache preprocessed tensors to <code>/dev/shm</code>, switch to LMDB, or move to NVMe SSD.`},
+  {id:'sampler',ic:'🎲',nm:'Sampler',sub:'Main process',
+   title:'Stage 2 — Sampler: Which Indices to Fetch',
+   body:`The Sampler generates a complete ordered list of integer indices for one epoch. This runs entirely in the <em>main process</em> — workers never decide the order.<br><br>
+   <strong>RandomSampler:</strong> Fisher-Yates shuffle — <code>shuffle=True</code>. Use for training.<br>
+   <strong>SequentialSampler:</strong> [0, 1, 2, …, N-1]. Use for validation.<br>
+   <strong>WeightedRandomSampler:</strong> Each sample has a weight → over-sample rare classes.<br>
+   <strong>DistributedSampler:</strong> Shards the index list across DDP ranks — each GPU sees a different subset of the epoch.<br><br>
+   <code>BatchSampler</code> wraps any sampler and groups indices into lists of <code>batch_size</code>. Each list is sent to one worker.`},
+  {id:'workers',ic:'⚙️',nm:'Workers',sub:'N subprocesses',
+   title:'Stage 3 — Worker Processes: Parallel Loading',
+   body:`Each worker is a separate Python subprocess. It receives a list of indices from the BatchSampler queue, calls <code>dataset.__getitem__(idx)</code> for each, applies transforms, assembles the result, and places the tensor batch in shared memory (<code>/dev/shm</code>).<br><br>
+   <strong>Key rules:</strong><br>
+   • Each worker holds its own independent copy of the Dataset object<br>
+   • Workers cannot share state — use global variables carefully<br>
+   • <code>persistent_workers=True</code> keeps workers alive between epochs (saves 2–5s startup per epoch)<br>
+   • <code>prefetch_factor=2</code>: each worker pre-fetches 2 batches ahead<br>
+   • Rule of thumb: <code>num_workers</code> = 4 per GPU, max = physical CPU cores / num_GPUs`},
+  {id:'collate',ic:'🗂️',nm:'Collate',sub:'Per worker',
+   title:'Stage 4 — Collate Function: Assembling the Batch',
+   body:`Each worker calls <code>collate_fn(list_of_samples)</code> to convert a Python list of individual samples into a single batched tensor.<br><br>
+   <strong>Default collate_fn:</strong> stacks equal-shape tensors using <code>torch.stack</code>. Works for images and fixed-length sequences.<br><br>
+   <strong>Custom collate_fn is needed when:</strong><br>
+   • Text sequences have variable length → use <code>pad_sequence</code><br>
+   • Labels are nested dicts or compound objects<br>
+   • Some samples are corrupted and must be filtered<br>
+   • You need to dynamically compute per-batch normalisation<br><br>
+   <strong>Performance tip:</strong> Collation happens in the worker — keep it fast. Pre-allocate output tensors with <code>out=torch.empty(...)</code> for zero-copy stacking.`},
+  {id:'pin',ic:'📌',nm:'Pin Memory',sub:'CPU→page-locked',
+   title:'Stage 5 — Pinned Memory: Enabling Fast GPU Transfer',
+   body:`Normal CPU RAM is <em>pageable</em>: the OS can swap any page to disk at any time. This means the GPU cannot safely DMA directly from it — CUDA must first copy the data to a <em>pinned</em> (page-locked) staging buffer.<br><br>
+   <code>pin_memory=True</code> allocates the DataLoader output tensors directly in pinned memory, eliminating the extra copy entirely.<br><br>
+   <strong>Then use:</strong><br>
+   <code>imgs = imgs.to(device, non_blocking=True)</code><br><br>
+   This issues an <em>asynchronous</em> DMA transfer — Python returns immediately while the GPU fetches the data in the background. The GPU begins the next kernel only after the transfer completes, but the CPU is free to do other work (like preparing the next batch).<br><br>
+   <strong>Speedup:</strong> ~1.3–1.5× for large batches on PCIe Gen4. Always enable it.`},
+  {id:'shm',ic:'🗃️',nm:'Shared Mem',sub:'/dev/shm',
+   title:'Stage 6 — Shared Memory: The Worker ↔ Main Process Bridge',
+   body:`Workers cannot directly return tensors to the main process across subprocess boundaries. Instead they write the completed tensor batch to shared memory (<code>/dev/shm</code>), and the main process memory-maps it.<br><br>
+   <strong>How much shared memory you need:</strong><br>
+   <code>num_workers × prefetch_factor × batch_size × C × H × W × bytes_per_pixel</code><br><br>
+   <strong>Docker default:</strong> 64 MB — enough for ~1 ImageNet batch with 4 workers, nowhere near enough for real training.<br><br>
+   <strong>The symptom of too-small /dev/shm:</strong> workers crash with a cryptic "OSError: [Errno 28] No space left on device" — nothing about shared memory.<br><br>
+   <strong>Fix:</strong> Add <code>--shm-size=16g</code> to your <code>docker run</code> command.`},
+  {id:'gpu',ic:'⚡',nm:'GPU HBM',sub:'Training begins',
+   title:'Stage 7 — GPU HBM: The Training Tensor',
+   body:`Once the batch tensor lands in GPU High-Bandwidth Memory (HBM), the GPU can begin the forward pass at full Tensor Core throughput.<br><br>
+   <strong>Target state:</strong><br>
+   • SM% sustained above 85% with &lt;10% variance → compute-bound, pipeline is healthy<br><br>
+   <strong>Failure patterns:</strong><br>
+   • <strong>Sawtooth</strong> (0% → 90% → 0%): GPU faster than DataLoader → starvation → increase <code>num_workers</code><br>
+   • <strong>Low flat</strong> (30–40%): I/O bottleneck → switch to faster storage or LMDB<br>
+   • <strong>CPU 100%, GPU 50%</strong>: transform bottleneck → use DALI or lighter augmentation<br><br>
+   <strong>Measurement:</strong> <code>nvidia-smi dmon -s u -d 1</code> — watch the SM% column in a second terminal while training.`},
+];
+
+function buildPipeline(){
+  const row=document.getElementById('pipe-row');
+  STAGES.forEach((s,i)=>{
+    const d=document.createElement('div');
+    d.className='pipe-stage';
+    d.innerHTML=`<div class="pipe-box" id="pb-${s.id}" onclick="showStage('${s.id}')">
+      <div class="p-icon">${s.ic}</div>
+      <div class="p-name">${s.nm}</div>
+      <div class="p-sub">${s.sub}</div></div>`;
+    row.appendChild(d);
+    if(i<STAGES.length-1){
+      const a=document.createElement('div');
+      a.className='pipe-arr';
+      a.innerHTML='<svg width="32" height="16"><line x1="2" y1="8" x2="26" y2="8" stroke="#374151" stroke-width="2"/><polygon points="24,4 32,8 24,12" fill="#374151"/></svg>';
+      row.appendChild(a);
+    }
+  });
+
+  // Timeline
+  const tl=document.getElementById('tl');
+  // ── Timeline legend ──────────────────────────────────────────────────
+  // Amber (#f59e0b): Worker loading — calling __getitem__() + transforms for each sample
+  // Orange (#d97316): Worker collating — assembling individual samples into one batch tensor
+  // Blue   (#60a5fa): PCIe DMA transfer — batch moves from pinned CPU RAM to GPU HBM
+  // Green  (#4ade80): GPU training — forward pass, loss, backward, optimizer step
+
+  const tracks=[
+    // Worker 1 handles batches 1, 3, 5, 7 (odd batches, staggered with Worker 2)
+    // Each bar = __getitem__() called for every index in the batch, then transforms applied
+    {nm:'Worker 1',sub:'load + transform',segs:[
+      {l:0, w:20,bg:'#f59e0b',t:'load B1',tip:'__getitem__ × batch_size + transforms'},
+      {l:21,w:5, bg:'#d97316',t:'↗B1',   tip:'collate: stack samples into one tensor'},
+      {l:27,w:20,bg:'#f59e0b',t:'load B3',tip:'__getitem__ × batch_size + transforms'},
+      {l:48,w:5, bg:'#d97316',t:'↗B3',   tip:'collate: stack samples into one tensor'},
+      {l:54,w:20,bg:'#f59e0b',t:'load B5',tip:'__getitem__ × batch_size + transforms'},
+      {l:75,w:5, bg:'#d97316',t:'↗B5',   tip:'collate: stack samples into one tensor'},
+      {l:81,w:16,bg:'#f59e0b',t:'load B7',tip:'__getitem__ × batch_size + transforms'},
+    ]},
+    // Worker 2 handles batches 2, 4, 6, 8 (interleaved with Worker 1)
+    {nm:'Worker 2',sub:'load + transform',segs:[
+      {l:7, w:20,bg:'#f59e0b',t:'load B2',tip:'__getitem__ × batch_size + transforms'},
+      {l:28,w:5, bg:'#d97316',t:'↗B2',   tip:'collate: stack samples into one tensor'},
+      {l:34,w:20,bg:'#f59e0b',t:'load B4',tip:'__getitem__ × batch_size + transforms'},
+      {l:55,w:5, bg:'#d97316',t:'↗B4',   tip:'collate: stack samples into one tensor'},
+      {l:61,w:20,bg:'#f59e0b',t:'load B6',tip:'__getitem__ × batch_size + transforms'},
+      {l:82,w:5, bg:'#d97316',t:'↗B6',   tip:'collate: stack samples into one tensor'},
+    ]},
+    // PCIe DMA: very short — pinned memory enables direct async transfer (~1ms for 64×3×224×224)
+    {nm:'PCIe DMA',sub:'CPU → GPU transfer',segs:[
+      {l:26,w:3,bg:'#60a5fa',t:'B1→GPU',tip:'async DMA: batch tensor copied to GPU HBM (non_blocking=True)'},
+      {l:53,w:3,bg:'#60a5fa',t:'B3→GPU',tip:'async DMA: batch tensor copied to GPU HBM'},
+      {l:80,w:3,bg:'#60a5fa',t:'B5→GPU',tip:'async DMA: batch tensor copied to GPU HBM'},
+      {l:96,w:3,bg:'#60a5fa',t:'B7→GPU',tip:'async DMA: batch tensor copied to GPU HBM'},
+    ]},
+    // GPU: starts training as soon as DMA completes — no waiting!
+    {nm:'GPU training',sub:'forward+backward',segs:[
+      {l:0, w:26,bg:'#4ade80',t:'init / warmup',tip:'first batch: model init, cuDNN algo selection'},
+      {l:29,w:24,bg:'#4ade80',t:'train batch 1', tip:'forward → loss → backward → optimizer.step()'},
+      {l:56,w:24,bg:'#4ade80',t:'train batch 2', tip:'forward → loss → backward → optimizer.step()'},
+      {l:83,w:17,bg:'#4ade80',t:'train B3',       tip:'forward → loss → backward → optimizer.step()'},
+    ]},
+  ];
+  tl.innerHTML=tracks.map(t=>`<div class="tl-track">
+    <div class="tl-name" style="display:flex;flex-direction:column;align-items:flex-end">
+      <span>${t.nm}</span>
+      <span style="font-size:8px;color:#6b7280;line-height:1.3">${t.sub||''}</span>
+    </div>
+    <div class="tl-bar">${t.segs.map(s=>`<div class="tl-seg" style="left:${s.l}%;width:${s.w}%;background:${s.bg}" title="${s.tip||s.t}">${s.t}</div>`).join('')}</div>
+  </div>`).join('');
+}
+
+function showStage(id){
+  document.querySelectorAll('.pipe-box').forEach(b=>b.classList.remove('on'));
+  document.getElementById('pb-'+id)?.classList.add('on');
+  const s=STAGES.find(x=>x.id===id);
+  const inf=document.getElementById('stage-info');
+  inf.innerHTML=`<h3>${s.title}</h3><p>${s.body}</p>`;
+  inf.classList.add('on');
+  inf.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+// ══════════════════════════════════════════════════
+// PANEL 2: BUILDER
+// ══════════════════════════════════════════════════
+const PARAMS=[
+  {k:'batch_size',v:64,type:'range',min:8,max:512,step:8,
+   desc:'Samples per batch. Larger = more GPU parallelism, more VRAM. Too large = gradient noise is too low (sharp minima). Too small = GPU under-utilised.'},
+  {k:'shuffle',v:'True',type:'radio',opts:['True','False'],
+   desc:'RandomSampler when True, SequentialSampler when False. ALWAYS True for training (prevents learning the order). ALWAYS False for validation.'},
+  {k:'num_workers',v:4,type:'range',min:0,max:16,step:1,
+   desc:'Parallel worker subprocesses. 0 = single-process (safe for debugging). 4–8 recommended per GPU. More workers = more /dev/shm usage.'},
+  {k:'pin_memory',v:'True',type:'radio',opts:['True','False'],
+   desc:'Page-lock output tensors for async GPU DMA. ALWAYS True when training on CUDA. Small CPU RAM cost, large transfer speedup.'},
+  {k:'prefetch_factor',v:2,type:'range',min:1,max:8,step:1,
+   desc:'Batches each worker pre-loads ahead of demand. 2 is the default. Higher reduces GPU starvation but increases /dev/shm and RAM usage.'},
+  {k:'persistent_workers',v:'True',type:'radio',opts:['True','False'],
+   desc:'Keep worker processes alive between epochs. Saves 2–5s of worker spawn overhead per epoch. True when num_workers > 0.'},
+  {k:'drop_last',v:'True',type:'radio',opts:['True','False'],
+   desc:'Discard the final batch if smaller than batch_size. ALWAYS True for training with BatchNorm (a batch of 1 sample causes a NaN in the std computation).'},
+];
+const pv={};PARAMS.forEach(p=>{pv[p.k]=p.v;});
+
+function buildBuilder(){
+  const el=document.getElementById('param-list');
+  el.innerHTML=PARAMS.map(p=>{
+    let c=p.type==='range'
+      ?`<div style="display:flex;align-items:center;gap:10px">
+          <input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.v}"
+            oninput="setP('${p.k}',+this.value,this)">
+          <span id="pv-${p.k}" style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--rust);min-width:24px">${p.v}</span>
+        </div>`
+      :`<div class="rg">${p.opts.map(o=>`<div class="rb${o===String(p.v)?' on':''}" onclick="setP('${p.k}','${o}');selRB(this)">${o}</div>`).join('')}</div>`;
+    return `<div class="param" id="pm-${p.k}" onclick="toggleP('${p.k}')">
+      <div class="p-hdr">
+        <div class="p-key">${p.k}</div>
+        <div class="p-badge" id="bd-${p.k}">${p.v}</div>
+      </div>
+      <div class="p-desc">${p.desc}</div>
+      <div class="p-ctrl">${c}</div>
+    </div>`;
+  }).join('');
+  renderCode();renderImpact();
+}
+
+function toggleP(k){
+  const was=document.getElementById('pm-'+k).classList.contains('on');
+  document.querySelectorAll('.param').forEach(x=>x.classList.remove('on'));
+  if(!was)document.getElementById('pm-'+k).classList.add('on');
+}
+function selRB(el){el.closest('.rg')?.querySelectorAll('.rb').forEach(b=>b.classList.remove('on'));el.classList.add('on');}
+function setP(k,v,inp){
+  pv[k]=v;
+  const bd=document.getElementById('bd-'+k);if(bd)bd.textContent=v;
+  const pvEl=document.getElementById('pv-'+k);if(pvEl&&inp)pvEl.textContent=inp.value;
+  renderCode();renderImpact();
+}
+
+function renderCode(){
+  const v=pv;
+  document.getElementById('dl-code').innerHTML=
+`<span class="cm"># ─────────────────────────────────────────</span>
+<span class="cm"># Training DataLoader</span>
+<span class="cm"># ─────────────────────────────────────────</span>
+<span class="kw">from</span> torch.utils.data <span class="kw">import</span> DataLoader
+
+train_loader = <span class="fn">DataLoader</span>(
+    train_dataset,
+    batch_size          = <span class="hi">${v.batch_size}</span>,
+    shuffle             = <span class="hi">${v.shuffle}</span>,
+    num_workers         = <span class="hi">${v.num_workers}</span>,
+    pin_memory          = <span class="hi">${v.pin_memory}</span>,
+    prefetch_factor     = <span class="hi">${v.prefetch_factor}</span>,
+    persistent_workers  = <span class="hi">${v.persistent_workers}</span>,
+    drop_last           = <span class="hi">${v.drop_last}</span>,
+)
+
+<span class="cm"># In training loop</span>
+<span class="kw">for</span> imgs, labels <span class="kw">in</span> train_loader:
+    imgs   = imgs.<span class="fn">to</span>(device, non_blocking=<span class="val">True</span>)
+    labels = labels.<span class="fn">to</span>(device, non_blocking=<span class="val">True</span>)
+    <span class="cm"># ... training step ...</span>
+
+<span class="cm"># Batch tensor shapes:</span>
+<span class="cm"># imgs:   (${v.batch_size}, C, H, W)  float32</span>
+<span class="cm"># labels: (${v.batch_size},)          int64</span>`;
+}
+
+function renderImpact(){
+  const nw=+pv.num_workers,pm=pv.pin_memory==='True',
+        pw=pv.persistent_workers==='True',pf=+pv.prefetch_factor,bs=+pv.batch_size;
+  const speed=Math.min(100,15+(nw>0?42:0)+(pm?15:0)+(pw?10:0)+Math.min(pf*3,10));
+  const mem=Math.min(100,8+(bs/512)*38+(nw*pf*8)+(pm?8:0));
+  const safe=Math.min(100,(pv.shuffle==='True'?15:0)+(pv.drop_last==='True'?25:0)+(pm?20:0)+38);
+  const bars=[['GPU utilisation',speed,'#4ade80'],['RAM + /dev/shm',mem,'#f59e0b'],['Training safety',safe,'#60a5fa']];
+  document.getElementById('imp-panel').innerHTML=
+    `<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--stone);margin-bottom:10px">Estimated Impact</div>`+
+    bars.map(([l,v,c])=>`<div class="imp-row">
+      <div class="imp-lbl">${l}</div>
+      <div class="imp-bw"><div class="imp-bf" style="width:${v}%;background:${c}"></div></div>
+      <div class="imp-v">${v}%</div>
+    </div>`).join('');
+  const warns=[];
+  if(nw===0)warns.push('⚠ <strong>num_workers=0</strong>: single-process mode. GPU stalls while the main process loads each batch.');
+  if(!pm&&nw>0)warns.push('⚠ <strong>pin_memory=False</strong>: extra CPU staging copy per batch before GPU transfer.');
+  if(!pw&&nw>0)warns.push('⚠ <strong>persistent_workers=False</strong>: workers re-spawned every epoch (2–5s overhead each time).');
+  if(pv.drop_last==='False')warns.push('⚠ <strong>drop_last=False</strong>: final partial batch may cause BatchNorm NaN if size=1.');
+  const wp=document.getElementById('warn-panel');
+  if(warns.length){wp.style.display='block';wp.innerHTML=warns.join('<br>');}
+  else{wp.style.display='none';}
+}
+
+// ══════════════════════════════════════════════════
+// PANEL 3: DATASET
+// ══════════════════════════════════════════════════
+const PATS=[
+  {nm:'Image Files',tag:'Vision',tc:'rust',
+   desc:'Load images lazily from a list of file paths. Never load images in __init__ — that would load the entire dataset into RAM immediately.',
+   rules:['Store only paths and labels in __init__ (instantaneous)',
+     'Open each image file in __getitem__ — workers call this in parallel',
+     'Apply transforms inside __getitem__ — augmentation also parallelised',
+     {t:'Never load all images in __init__ — will exhaust RAM on any real dataset',w:true}],
+   code:`<span class="kw">from</span> torch.utils.data <span class="kw">import</span> Dataset
+<span class="kw">from</span> PIL <span class="kw">import</span> Image
+<span class="kw">import</span> torch
+
+<span class="kw">class</span> <span class="hl">ImageDataset</span>(Dataset):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, paths: list, labels: list, transform=<span class="kw">None</span>):
+        self.paths     = paths      <span class="cm"># list of Path or str</span>
+        self.labels    = labels     <span class="cm"># list of int class IDs</span>
+        self.transform = transform  <span class="cm"># torchvision transforms</span>
+        <span class="cm"># ❌ DO NOT open images here</span>
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(self) -> int:
+        <span class="kw">return</span> len(self.paths)
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(self, idx: int):
+        <span class="cm"># Workers call this in parallel — file I/O here is safe</span>
+        img   = Image.<span class="fn">open</span>(self.paths[idx]).<span class="fn">convert</span>(<span class="st">'RGB'</span>)
+        label = self.labels[idx]
+        <span class="kw">if</span> self.transform:
+            img = self.transform(img)   <span class="cm"># PIL → float32 tensor</span>
+        <span class="kw">return</span> img, torch.<span class="fn">tensor</span>(label, dtype=torch.<span class="ty">long</span>)
+
+<span class="cm"># Usage</span>
+train_ds = <span class="fn">ImageDataset</span>(train_paths, train_labels, train_transform)
+val_ds   = <span class="fn">ImageDataset</span>(val_paths,   val_labels,   val_transform)`},
+  {nm:'CSV / Tabular',tag:'Tabular',tc:'teal',
+   desc:'For tabular data that fits in RAM — pre-load the entire CSV in __init__ and convert to tensors. __getitem__ becomes a zero-cost tensor index.',
+   rules:['Load entire file with pandas or numpy in __init__',
+     'Convert to float32 / int64 tensors immediately at load time',
+     '__getitem__ is just a tensor slice — extremely fast',
+     {t:'For CSVs that do not fit in RAM: use np.memmap or stream row-by-row',w:true}],
+   code:`<span class="kw">import</span> torch, pandas <span class="kw">as</span> pd
+<span class="kw">from</span> torch.utils.data <span class="kw">import</span> Dataset
+
+<span class="kw">class</span> <span class="hl">TabularDataset</span>(Dataset):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, csv_path: str, target_col: str):
+        df = pd.<span class="fn">read_csv</span>(csv_path)
+        y  = df[target_col].<span class="fn">values</span>
+        X  = df.<span class="fn">drop</span>(columns=[target_col]).<span class="fn">values</span>
+        <span class="cm"># Convert once → __getitem__ is just a tensor index</span>
+        self.X = torch.<span class="fn">tensor</span>(X, dtype=torch.<span class="ty">float32</span>)
+        self.y = torch.<span class="fn">tensor</span>(y, dtype=torch.<span class="ty">long</span>)
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(self):
+        <span class="kw">return</span> len(self.y)
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(self, idx):
+        <span class="kw">return</span> self.X[idx], self.y[idx]  <span class="cm"># zero-copy tensor view</span>`},
+  {nm:'HDF5',tag:'Scientific',tc:'amber',
+   desc:'HDF5 stores large arrays with optional compression. The critical rule: h5py file handles cannot be pickled, so you MUST open the file inside __getitem__, not __init__.',
+   rules:['Open file in __init__ only to read dataset length, then close it',
+     'Re-open the file inside __getitem__ on every call',
+     'Use swmr=True (Single Writer Multiple Reader) for concurrent worker access',
+     {t:'NEVER store h5py.File as self.f — it cannot be pickled for worker processes and will crash',w:true}],
+   code:`<span class="kw">import</span> h5py, torch
+<span class="kw">from</span> torch.utils.data <span class="kw">import</span> Dataset
+
+<span class="kw">class</span> <span class="hl">HDF5Dataset</span>(Dataset):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, path, x_key=<span class="st">'images'</span>, y_key=<span class="st">'labels'</span>):
+        self.path  = path
+        self.x_key = x_key
+        self.y_key = y_key
+        <span class="cm"># Read length once — safe to briefly open here</span>
+        <span class="kw">with</span> h5py.<span class="fn">File</span>(path, <span class="st">'r'</span>) <span class="kw">as</span> f:
+            self.n = len(f[x_key])
+        <span class="cm"># ❌ DON'T: self.f = h5py.File(path, 'r')</span>
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(self): <span class="kw">return</span> self.n
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(self, idx):
+        <span class="cm"># Open per-call — h5py handles are not picklable</span>
+        <span class="kw">with</span> h5py.<span class="fn">File</span>(self.path, <span class="st">'r'</span>, swmr=<span class="kw">True</span>) <span class="kw">as</span> f:
+            x = torch.<span class="fn">tensor</span>(f[self.x_key][idx], dtype=torch.<span class="ty">float32</span>)
+            y = torch.<span class="fn">tensor</span>(int(f[self.y_key][idx]), dtype=torch.<span class="ty">long</span>)
+        <span class="kw">return</span> x, y`},
+  {nm:'NLP / Variable Length',tag:'NLP',tc:'sage',
+   desc:'Text sequences vary in length. The default collate_fn cannot stack tensors of different shapes. You need a custom collate_fn that pads sequences to the max length in each batch.',
+   rules:['Tokenise all texts in __init__ if dataset fits in RAM (one-time cost)',
+     'Return a 1D tensor of token IDs from __getitem__ — different lengths is fine',
+     'Custom collate_fn pads to the max length in each batch, not globally',
+     'Return lengths alongside padded sequences so the model can mask padding'],
+   code:`<span class="kw">from</span> torch.nn.utils.rnn <span class="kw">import</span> pad_sequence
+<span class="kw">from</span> torch.utils.data <span class="kw">import</span> Dataset, DataLoader
+<span class="kw">import</span> torch
+
+<span class="kw">class</span> <span class="hl">TextDataset</span>(Dataset):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, texts, labels, tokenizer, max_len=<span class="nu">256</span>):
+        self.enc    = tokenizer(texts, truncation=<span class="kw">True</span>,
+                       max_length=max_len, padding=<span class="kw">False</span>)
+        self.labels = torch.<span class="fn">tensor</span>(labels, dtype=torch.<span class="ty">long</span>)
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(self): <span class="kw">return</span> len(self.labels)
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(self, idx):
+        ids = torch.<span class="fn">tensor</span>(self.enc[<span class="st">'input_ids'</span>][idx])
+        <span class="kw">return</span> ids, self.labels[idx]   <span class="cm"># variable-length tensor</span>
+
+<span class="kw">def</span> <span class="fn">pad_collate</span>(batch):
+    seqs, labels = zip(*batch)
+    lengths = torch.<span class="fn">tensor</span>([len(s) <span class="kw">for</span> s <span class="kw">in</span> seqs])
+    padded  = <span class="fn">pad_sequence</span>(seqs, batch_first=<span class="kw">True</span>, padding_value=<span class="nu">0</span>)
+    <span class="kw">return</span> padded, lengths, torch.<span class="fn">stack</span>(labels)
+
+loader = <span class="fn">DataLoader</span>(ds, batch_size=<span class="nu">32</span>, collate_fn=pad_collate)`},
+  {nm:'IterableDataset',tag:'Streaming',tc:'navy',
+   desc:'For data too large to index, arriving from a live stream, or stored as sequential shards. Has __iter__ but no __len__ and no random access. Must shard manually across workers.',
+   rules:['Implements __iter__ only — no __len__, no random access index',
+     {t:'Each worker independently calls __iter__ — without sharding every worker yields all samples (huge duplication!)',w:true},
+     'Use get_worker_info() inside __iter__ to split the shard list across workers',
+     'shuffle=False required in DataLoader — IterableDataset cannot shuffle without a buffer'],
+   code:`<span class="kw">from</span> torch.utils.data <span class="kw">import</span> IterableDataset, get_worker_info
+<span class="kw">import</span> math
+
+<span class="kw">class</span> <span class="hl">StreamDataset</span>(IterableDataset):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, shard_paths: list):
+        self.shards = shard_paths
+
+    <span class="kw">def</span> <span class="fn">__iter__</span>(self):
+        info = <span class="fn">get_worker_info</span>()
+        <span class="kw">if</span> info <span class="kw">is</span> <span class="kw">None</span>:           <span class="cm"># single-process: all shards</span>
+            shards = self.shards
+        <span class="kw">else</span>:                       <span class="cm"># multi-worker: shard evenly</span>
+            n      = info.num_workers
+            per_w  = math.<span class="fn">ceil</span>(len(self.shards)/n)
+            start  = info.id * per_w
+            shards = self.shards[start : start+per_w]
+
+        <span class="kw">for</span> path <span class="kw">in</span> shards:
+            <span class="kw">for</span> x, y <span class="kw">in</span> <span class="fn">read_shard</span>(path):   <span class="cm"># your reader</span>
+                <span class="kw">yield</span> x, y
+
+<span class="cm"># Note: shuffle=False — use WebDataset .shuffle(buffer) instead</span>`},
+];
+
+function buildDataset(){
+  const tb=document.getElementById('pat-tabs');
+  const ct=document.getElementById('pat-content');
+  tb.innerHTML=PATS.map((p,i)=>`<div class="pt${i===0?' on':''}" onclick="selPat(${i},this)">${p.nm}</div>`).join('');
+  ct.innerHTML=PATS.map((p,i)=>`<div class="pc${i===0?' on':''}" id="pc-${i}">
+    <div class="two">
+      <div>
+        <div class="tag tag-${p.tc}" style="margin-bottom:10px">${p.tag}</div>
+        <p style="font-size:13.5px;line-height:1.65;margin-bottom:14px">${p.desc}</p>
+        <ul class="ck">${p.rules.map(r=>typeof r==='string'?`<li>${r}</li>`:`<li class="w">${r.t}</li>`).join('')}</ul>
+      </div>
+      <div class="codeblock">${p.code}</div>
+    </div>
+  </div>`).join('');
+}
+function selPat(i,el){
+  document.querySelectorAll('.pt').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.pc').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('pc-'+i).classList.add('on');
+}
+
+// ══════════════════════════════════════════════════
+// PANEL 4: TRANSFORMS
+// ══════════════════════════════════════════════════
+const TFS=[
+  {nm:'RandomResizedCrop(224)',ds:'Random region cropped and resized to 224×224. Teaches scale and position invariance.',md:'tr',
+   fn:(ctx,c)=>{const s=.35+Math.random()*.55,ox=Math.random()*(1-s)*c,oy=Math.random()*(1-s)*c;ctx.drawImage(ctx.canvas,ox,oy,s*c,s*c,0,0,c,c);}},
+  {nm:'RandomHorizontalFlip',ds:'50% chance of mirroring left-to-right. Most subjects are bilaterally symmetric.',md:'tr',
+   fn:(ctx,c)=>{ctx.translate(c,0);ctx.scale(-1,1);ctx.drawImage(ctx.canvas,-c,0,c,c);}},
+  {nm:'ColorJitter',ds:'Randomly adjusts brightness, contrast, saturation, hue. Simulates lighting variation.',md:'tr',
+   fn:(ctx,c)=>{const d=ctx.getImageData(0,0,c,c);for(let i=0;i<d.data.length;i+=4){const b=.4+Math.random()*.8;d.data[i]=Math.min(255,d.data[i]*b);d.data[i+1]=Math.min(255,d.data[i+1]*b*.85);d.data[i+2]=Math.min(255,d.data[i+2]*b*1.1);}ctx.putImageData(d,0,0);}},
+  {nm:'RandomGrayscale(p=0.1)',ds:'10% chance of converting to grayscale. Forces colour-agnostic features.',md:'tr',
+   fn:(ctx,c)=>{const d=ctx.getImageData(0,0,c,c);for(let i=0;i<d.data.length;i+=4){const g=d.data[i]*.299+d.data[i+1]*.587+d.data[i+2]*.114;d.data[i]=d.data[i+1]=d.data[i+2]=g;}ctx.putImageData(d,0,0);}},
+  {nm:'Resize(256)',ds:'Deterministic: resize shorter edge to 256px. First step of validation pipeline.',md:'va',
+   fn:(ctx,c)=>{ctx.drawImage(ctx.canvas,10,10,c-20,c-20,0,0,c,c);}},
+  {nm:'CenterCrop(224)',ds:'Crop central 224×224. Deterministic — same region every run. Validation only.',md:'va',
+   fn:(ctx,c)=>{const m=Math.floor(c*.1);const id=ctx.getImageData(m,m,c-m*2,c-m*2);ctx.clearRect(0,0,c,c);ctx.putImageData(id,0,0);}},
+  {nm:'ToTensor()',ds:'PIL Image (H,W,C uint8 0–255) → Tensor (C,H,W float32 0.0–1.0). Always required.',md:'bo',
+   fn:(ctx,c)=>{const d=ctx.getImageData(0,0,c,c);ctx.putImageData(d,0,0);}},
+  {nm:'Normalize(mean,std)',ds:'(pixel−mean)/std per channel. Brings [0,1] to ≈N(0,1). Always the last transform.',md:'bo',
+   fn:(ctx,c)=>{const d=ctx.getImageData(0,0,c,c);for(let i=0;i<d.data.length;i+=4){d.data[i]=Math.min(255,Math.max(0,(d.data[i]/255-.485)/.229*55+128));d.data[i+1]=Math.min(255,Math.max(0,(d.data[i+1]/255-.456)/.224*55+128));d.data[i+2]=Math.min(255,Math.max(0,(d.data[i+2]/255-.406)/.225*55+128));}ctx.putImageData(d,0,0);}},
+];
+let origPx=null;
+
+function buildTransforms(){
+  const cv=document.getElementById('orig-cv');
+  const ctx=cv.getContext('2d');
+  for(let y=0;y<180;y++)for(let x=0;x<180;x++){
+    ctx.fillStyle=`hsl(${(x+y)*2%360},62%,${42+Math.sin(x*.11)*13+Math.cos(y*.09)*8}%)`;
+    ctx.fillRect(x,y,1,1);
+  }
+  ctx.fillStyle='rgba(255,220,50,.72)';ctx.beginPath();ctx.arc(52,52,34,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='rgba(40,160,255,.55)';ctx.fillRect(100,90,65,65);
+  ctx.fillStyle='rgba(255,80,80,.5)';ctx.beginPath();ctx.arc(140,45,25,0,2*Math.PI);ctx.fill();
+  origPx=ctx.getImageData(0,0,180,180);
+  // Init tf-cv with orig
+  const tc=document.getElementById('tf-cv').getContext('2d');
+  tc.putImageData(origPx,0,0);
+
+  document.getElementById('tf-list').innerHTML=TFS.map((t,i)=>`<div class="tf-item" id="tfi-${i}" onclick="applyTF(${i})">
+    <div class="tf-nm">${t.nm}</div>
+    <div class="tf-ds">${t.ds}</div>
+    <div class="tf-md ${t.md}">${t.md==='tr'?'🔴 Training only':t.md==='va'?'🔵 Validation only':'🟢 Both pipelines'}</div>
+  </div>`).join('');
+
+  const trSeq=[
+    {n:'RandomResizedCrop(224)',m:'tr'},{n:'RandomHorizontalFlip(p=0.5)',m:'tr'},
+    {n:'ColorJitter(0.4,0.4,0.4,0.1)',m:'tr'},{n:'ToTensor()',m:'bo'},{n:'Normalize(mean,std)',m:'bo'},
+  ];
+  const vaSeq=[{n:'Resize(256)',m:'va'},{n:'CenterCrop(224)',m:'va'},{n:'ToTensor()',m:'bo'},{n:'Normalize(mean,std)',m:'bo'}];
+  document.getElementById('tr-pipeline').innerHTML=trSeq.map((s,i)=>`<div class="seq"><span class="seq-n">${i+1}</span><span class="seq-nm">${s.n}</span><span class="seq-b ${s.m==='bo'?'bo':'tr'}">${s.m==='bo'?'both':'train'}</span></div>`).join('');
+  document.getElementById('va-pipeline').innerHTML=vaSeq.map((s,i)=>`<div class="seq"><span class="seq-n">${i+1}</span><span class="seq-nm">${s.n}</span><span class="seq-b ${s.m==='bo'?'bo':'va'}">${s.m==='bo'?'both':'val'}</span></div>`).join('');
+}
+
+function applyTF(i){
+  document.querySelectorAll('.tf-item').forEach(e=>e.classList.remove('on'));
+  document.getElementById('tfi-'+i)?.classList.add('on');
+  const t=TFS[i];
+  const ctx=document.getElementById('tf-cv').getContext('2d');
+  ctx.save();ctx.clearRect(0,0,180,180);ctx.putImageData(origPx,0,0);
+  try{t.fn(ctx,180);}catch(e){}
+  ctx.restore();
+  document.getElementById('tf-lbl').textContent='After: '+t.nm;
+}
+
+// ══════════════════════════════════════════════════
+// PANEL 5: BOTTLENECK
+// ══════════════════════════════════════════════════
+const SCENARIOS=[
+  {nm:'num_workers=0',label:'Single process',
+   pattern:[6,91,5,90,7,89,5,92,6,88,5,91,7,89,6,90,5,88,7],
+   avg:52,status:'Starved',thru:'~40%',cls:'bad',
+   exp:`<strong>Symptom:</strong> Classic sawtooth — GPU oscillates 0% → 90% → 0%.<br><br>
+   <strong>Root cause:</strong> With <code>num_workers=0</code>, the main process must finish loading batch N+1 before the GPU can start it. There is zero overlap between loading and training.<br><br>
+   <strong>Fix:</strong> Set <code>num_workers=4</code>. Workers pre-load batches N+1 and N+2 while the GPU trains on N. The sawtooth disappears immediately.`},
+  {nm:'num_workers=4',label:'Healthy pipeline',
+   pattern:[89,92,90,94,91,93,89,92,90,95,91,93,90,89,94,91,92,90,93],
+   avg:92,status:'Healthy',thru:'~95%',cls:'ok',
+   exp:`<strong>Symptom:</strong> GPU SM% stays flat above 88%, minimal variance. This is what you want.<br><br>
+   <strong>Why it works:</strong> 4 workers × prefetch_factor=2 = 8 batches always in the queue. By the time the GPU finishes batch N, batch N+1 is already in pinned memory waiting.<br><br>
+   <strong>This is the target state.</strong> If you see this, your DataLoader is healthy — optimise elsewhere.`},
+  {nm:'Slow disk / NFS',label:'I/O bottleneck',
+   pattern:[2,62,3,58,2,64,4,60,2,61,3,59,2,62,4,58,2,60,3],
+   avg:35,status:'I/O Bound',thru:'~28%',cls:'bad',
+   exp:`<strong>Symptom:</strong> SM% stays low even with many workers. Adding more workers does not help.<br><br>
+   <strong>Diagnosis:</strong> Run <code>iostat -x 1</code> — if await &gt;10ms, your disk is the bottleneck.<br><br>
+   <strong>Fixes:</strong><ul style="margin-top:8px;padding-left:18px;line-height:1.85;font-size:13px">
+   <li>Cache preprocessed tensors to <code>/dev/shm</code> (RAM disk)</li>
+   <li>Switch from individual JPEG files to LMDB or HDF5 (sequential reads)</li>
+   <li>Use WebDataset (<code>.tar</code> shards) — optimised for NFS and S3</li>
+   <li>Move dataset to local NVMe SSD if on HDD</li></ul>`},
+  {nm:'CPU transforms',label:'CPU bottleneck',
+   pattern:[9,81,8,77,10,83,9,79,10,80,8,82,11,78,9,80,10,77,8],
+   avg:46,status:'CPU Bound',thru:'~42%',cls:'bad',
+   exp:`<strong>Symptom:</strong> htop shows all CPU cores at 100%. Increasing workers only helps until you run out of cores.<br><br>
+   <strong>Root cause:</strong> JPEG decode + random augmentation saturate CPU workers faster than the GPU can consume batches.<br><br>
+   <strong>Fixes:</strong><ul style="margin-top:8px;padding-left:18px;line-height:1.85;font-size:13px">
+   <li><strong>NVIDIA DALI:</strong> moves JPEG decode (nvJPEG) and augmentation onto the GPU</li>
+   <li>torchvision v2 transforms: tensor-based, 2× faster than PIL-based</li>
+   <li>Pre-compute and cache augmented images to avoid re-augmenting</li></ul>`},
+];
+
+function buildBottleneck(){
+  const sc=document.getElementById('sc-row');
+  sc.innerHTML=SCENARIOS.map((s,i)=>`<button class="sc-btn${i===0?' on':''}" onclick="setSc(${i},this)">${s.nm}</button>`).join('');
+  setSc(0,sc.firstChild);
+
+  const dxSteps=[
+    {n:1,title:'Check GPU utilisation',cmd:'nvidia-smi dmon -s u -d 1',
+     body:'Watch the SM% column (second column). Sawtooth = DataLoader starvation. Flat at 85%+ = compute-bound (this is good). This takes 10 seconds and tells you almost everything.'},
+    {n:2,title:'num_workers sweep',cmd:'# Time one epoch at 0, 2, 4, 8 workers',
+     body:'If step time drops significantly with more workers: preprocessing is bottlenecked — increase workers until it plateaus. If it barely changes: bottleneck is elsewhere.'},
+    {n:3,title:'Dummy dataset test',cmd:'# Replace with TensorDataset(torch.randn(...))',
+     body:'Swap your Dataset for one that generates random tensors (zero disk I/O). If GPU SM% jumps to 95%: your real Dataset loading is the bottleneck. If SM% is still low: model or GPU is the bottleneck.'},
+    {n:4,title:'I/O and CPU profiling',cmd:'iostat -x 1 && htop',
+     body:'If disk await > 5ms: storage saturating → switch to LMDB/HDF5/WebDataset. If all CPU cores at 100% with workers: transform saturating → use DALI or pre-process data.'},
+  ];
+  document.getElementById('dx-steps').innerHTML=dxSteps.map(s=>`<div class="dx-step" onclick="togDx(this)">
+    <div class="dx-hdr"><div class="dx-n">${s.n}</div>
+      <div><div class="dx-title">${s.title}</div><div class="dx-cmd">${s.cmd}</div></div>
+    </div>
+    <div class="dx-body">${s.body}</div>
+  </div>`).join('');
+}
+function setSc(i,el){
+  document.querySelectorAll('.sc-btn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  const s=SCENARIOS[i];
+  document.getElementById('gpu-chart').innerHTML=s.pattern.map(v=>`<div class="gpu-bar" style="height:${v}%;background:${v>80?'#4ade80':v>50?'#fbbf24':'#f87171'}"></div>`).join('');
+  document.getElementById('g-avg').textContent=s.avg+'%';
+  document.getElementById('g-avg').className='gv '+s.cls;
+  document.getElementById('g-status').textContent=s.status;
+  document.getElementById('g-status').className='gv '+s.cls;
+  document.getElementById('g-thru').textContent=s.thru;
+  document.getElementById('g-thru').className='gv '+s.cls;
+  document.getElementById('sc-explain').innerHTML=s.exp;
+}
+function togDx(el){const was=el.classList.contains('on');document.querySelectorAll('.dx-step').forEach(d=>d.classList.remove('on'));if(!was)el.classList.add('on');}
+
+// ══════════════════════════════════════════════════
+// PANEL 6: MEMORY
+// ══════════════════════════════════════════════════
+let mCh=3,mBpp=4;
+function buildMemory(){
+  document.getElementById('mc-inputs').innerHTML=`
+    <div class="ig"><span class="il">Batch Size</span>
+      <div class="ir"><input type="range" id="m-bs" min="8" max="512" step="8" value="64" oninput="updateM()"><span class="nd" id="nv-bs">64</span></div></div>
+    <div class="ig"><span class="il">Image Size (px)</span>
+      <div class="ir"><input type="range" id="m-im" min="32" max="512" step="32" value="224" oninput="updateM()"><span class="nd" id="nv-im">224</span></div></div>
+    <div class="ig"><span class="il">Channels</span>
+      <div class="rg" id="mc-ch">
+        <div class="rb" onclick="mCh=1;selRB(this);updateM()">1 (gray)</div>
+        <div class="rb on" onclick="mCh=3;selRB(this);updateM()">3 (RGB)</div>
+        <div class="rb" onclick="mCh=4;selRB(this);updateM()">4 (RGBA)</div>
+      </div></div>
+    <div class="ig"><span class="il">num_workers</span>
+      <div class="ir"><input type="range" id="m-nw" min="0" max="16" step="1" value="4" oninput="updateM()"><span class="nd" id="nv-nw">4</span></div></div>
+    <div class="ig"><span class="il">prefetch_factor</span>
+      <div class="ir"><input type="range" id="m-pf" min="1" max="8" step="1" value="2" oninput="updateM()"><span class="nd" id="nv-pf">2</span></div></div>
+    <div class="ig"><span class="il">Dtype (bytes/elem)</span>
+      <div class="rg" id="mc-dt">
+        <div class="rb on" onclick="mBpp=4;selRB(this);updateM()">float32 (4B)</div>
+        <div class="rb" onclick="mBpp=2;selRB(this);updateM()">float16 (2B)</div>
+        <div class="rb" onclick="mBpp=1;selRB(this);updateM()">uint8 (1B)</div>
+      </div></div>`;
+  updateM();
+}
+function updateM(){
+  const bs=+document.getElementById('m-bs').value;
+  const im=+document.getElementById('m-im').value;
+  const nw=+document.getElementById('m-nw').value;
+  const pf=+document.getElementById('m-pf').value;
+  ['bs','im','nw','pf'].forEach(k=>{const el=document.getElementById('nv-'+k);if(el)el.textContent=document.getElementById('m-'+k).value;});
+  const batchB=bs*mCh*im*im*mBpp;
+  const shmB=nw*pf*batchB;
+  const gpuB=batchB;
+  const lblB=bs*8;
+  const cpuB=batchB*2;
+  const fmt=b=>b>=1073741824?(b/1073741824).toFixed(2)+' GB':b>=1048576?(b/1048576).toFixed(1)+' MB':(b/1024).toFixed(0)+' KB';
+  const segs=[
+    {l:`/dev/shm (${nw}w × ${pf}pf × batch)`,v:shmB,c:'#f59e0b'},
+    {l:'GPU batch tensor',v:gpuB,c:'#60a5fa'},
+    {l:'CPU prefetch buffer',v:cpuB,c:'#34d399'},
+    {l:'Label tensor (int64)',v:lblB,c:'#94a3b8'},
+  ];
+  const mx=Math.max(...segs.map(s=>s.v),1);
+  document.getElementById('mc-result').innerHTML=`
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;margin-bottom:10px">Memory Breakdown</div>
+    <div style="font-size:12px;color:var(--stone);margin-bottom:14px">Per batch: ${bs}×${mCh}ch×${im}×${im}px×${mBpp}B = <strong>${fmt(batchB)}</strong></div>
+    ${segs.map(s=>`<div class="mb-seg">
+      <div class="mb-dot" style="background:${s.c}"></div>
+      <div class="mb-lbl">${s.l}</div>
+      <div class="mb-bw"><div class="mb-bf" style="width:${Math.round(s.v/mx*100)}%;background:${s.c}"></div></div>
+      <div class="mb-val">${fmt(s.v)}</div>
+    </div>`).join('')}
+    <div class="mb-tot"><div class="mb-tot-l">Total /dev/shm + GPU</div><div class="mb-tot-v">${fmt(shmB+gpuB+lblB)}</div></div>`;
+  const warn=document.getElementById('shm-warn');
+  if(shmB>64*1024*1024){
+    warn.classList.add('on');
+    warn.innerHTML=`⚠ <strong>/dev/shm needed: ${fmt(shmB)}</strong> — exceeds Docker default 64 MB.<br>Add <code>--shm-size=${Math.ceil(shmB/1073741824+.5)}g</code> to your <code>docker run</code>.`;
+  } else warn.classList.remove('on');
+}
+
+// ══════════════════════════════════════════════════
+// GLOBAL
+// ══════════════════════════════════════════════════
+function goTab(id,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-'+id).classList.add('active');
+}
+
+buildPipeline();
+buildBuilder();
+buildDataset();
+buildTransforms();
+buildBottleneck();
+buildMemory();
+showStage('disk');
+setSc(0,document.querySelector('.sc-btn'));
+</script>
+</body>
+</html>

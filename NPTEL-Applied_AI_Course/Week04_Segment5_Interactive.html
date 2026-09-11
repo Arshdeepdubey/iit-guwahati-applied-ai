@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch Data Types — Week 04 · Segment 5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg:        #0a0e1a;
+  --surface:   #111827;
+  --surface2:  #1a2234;
+  --border:    #1f2d44;
+  --navy:      #002060;
+
+  --fp32:  #60a5fa;
+  --bf16:  #34d399;
+  --fp16:  #f59e0b;
+  --fp8:   #f472b6;
+  --int8:  #a78bfa;
+  --int4:  #fb7185;
+  --tf32:  #22d3ee;
+  --fp64:  #94a3b8;
+
+  --text:      #e2e8f0;
+  --muted:     #64748b;
+  --accent:    #60a5fa;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Grid background ─────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(96,165,250,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96,165,250,.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+.container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 0 24px 80px; }
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+header {
+  padding: 56px 0 40px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 48px;
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.25);
+  color: var(--fp32); font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 5px 12px; border-radius: 4px; margin-bottom: 20px;
+}
+h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-weight: 900; line-height: 1.08;
+  background: linear-gradient(135deg, #e2e8f0 0%, #60a5fa 60%, #34d399 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; margin-bottom: 16px;
+}
+.subtitle { color: var(--muted); font-size: 1rem; font-weight: 400; max-width: 560px; line-height: 1.6; }
+
+/* ── Tabs ────────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 4px; margin-bottom: 40px; overflow-x: auto;
+}
+.tab {
+  flex: 1; min-width: 110px; padding: 10px 16px; border-radius: 7px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+  transition: all .2s; white-space: nowrap;
+}
+.tab:hover { color: var(--text); background: var(--surface2); }
+.tab.active { background: var(--accent); color: #0a0e1a; font-weight: 600; }
+
+/* ── Panels ──────────────────────────────────────────────────────────── */
+.panel { display: none; animation: fadeIn .3s ease; }
+.panel.active { display: block; }
+@keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: none; } }
+
+/* ── Section heading ─────────────────────────────────────────────────── */
+.section-label {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 24px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── Dtype Card Grid ─────────────────────────────────────────────────── */
+.dtype-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px; margin-bottom: 48px;
+}
+
+.dtype-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 24px;
+  cursor: pointer; transition: all .25s;
+  position: relative; overflow: hidden;
+}
+.dtype-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--card-color);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .3s ease;
+}
+.dtype-card:hover::before, .dtype-card.selected::before { transform: scaleX(1); }
+.dtype-card:hover { border-color: var(--card-color); transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.3); }
+.dtype-card.selected {
+  border-color: var(--card-color);
+  background: color-mix(in srgb, var(--card-color) 8%, var(--surface));
+}
+
+.dtype-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.dtype-name {
+  font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700;
+  color: var(--card-color); line-height: 1.2;
+}
+.dtype-full { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+.dtype-tag {
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 4px; background: color-mix(in srgb, var(--card-color) 15%, transparent);
+  color: var(--card-color); border: 1px solid color-mix(in srgb, var(--card-color) 30%, transparent);
+}
+
+/* ── Bit diagram ─────────────────────────────────────────────────────── */
+.bit-diagram { display: flex; gap: 3px; margin: 14px 0; align-items: center; flex-wrap: wrap; }
+.bit-group { display: flex; gap: 2px; }
+.bit {
+  width: 12px; height: 20px; border-radius: 3px;
+  transition: all .2s;
+}
+.bit.sign  { background: #ef4444; }
+.bit.exp   { background: #f59e0b; }
+.bit.mant  { background: #22c55e; }
+.bit-legend { display: flex; gap: 12px; margin-top: 6px; font-size: 10px; color: var(--muted); }
+.bit-legend span { display: flex; align-items: center; gap: 4px; }
+.bit-legend .dot { width: 8px; height: 8px; border-radius: 2px; }
+
+.dtype-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.stat { background: var(--surface2); border-radius: 6px; padding: 8px 10px; }
+.stat-label { font-size: 10px; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.stat-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--text); margin-top: 2px; }
+
+.dtype-desc { font-size: 13px; color: var(--muted); line-height: 1.55; margin-top: 12px; }
+
+/* ── Detail panel ────────────────────────────────────────────────────── */
+.detail-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 32px; margin-bottom: 48px;
+  display: none;
+  animation: fadeIn .3s ease;
+}
+.detail-panel.visible { display: block; }
+.detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+.detail-name {
+  font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700;
+}
+.detail-body { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+@media (max-width: 640px) { .detail-body { grid-template-columns: 1fr; } }
+
+.detail-section h3 {
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 12px; font-weight: 600;
+}
+.use-case-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.use-case-list li {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13.5px; line-height: 1.5; color: var(--text);
+}
+.use-case-list li::before {
+  content: '→'; color: var(--card-color);
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-top: 2px; flex-shrink: 0;
+}
+.warning-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.warning-list li {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13.5px; line-height: 1.5; color: #fbbf24;
+}
+.warning-list li::before { content: '⚠'; flex-shrink: 0; }
+
+.code-block {
+  background: #0d1117; border: 1px solid #1f2d44;
+  border-radius: 8px; padding: 16px; margin-top: 12px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  line-height: 1.8; overflow-x: auto;
+}
+.code-block .kw { color: #ff7b72; }
+.code-block .fn { color: #79c0ff; }
+.code-block .st { color: #a5d6ff; }
+.code-block .cm { color: #6e7681; font-style: italic; }
+.code-block .nu { color: #f2cc60; }
+.code-block .ty { color: #34d399; }
+
+/* ── Comparison table ────────────────────────────────────────────────── */
+.compare-wrap { overflow-x: auto; }
+table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+thead th {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 13px 16px; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--surface2); }
+.dtype-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px;
+}
+.dtype-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.bar-cell { min-width: 120px; }
+.bar-wrap { background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+.check   { color: #34d399; }
+.cross   { color: #ef4444; }
+.partial { color: #f59e0b; }
+
+/* ── Decision tree ───────────────────────────────────────────────────── */
+.decision-tree { display: flex; flex-direction: column; gap: 12px; }
+.decision-node {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+}
+.decision-question {
+  padding: 14px 20px; font-weight: 500; font-size: 14px; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center;
+  transition: background .2s;
+}
+.decision-question:hover { background: var(--surface2); }
+.decision-question .arrow { transition: transform .25s; color: var(--muted); }
+.decision-node.open .decision-question .arrow { transform: rotate(90deg); }
+.decision-answers {
+  display: none; padding: 0 20px 20px;
+  display: none; flex-direction: column; gap: 10px;
+}
+.decision-node.open .decision-answers { display: flex; }
+.decision-answer {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--surface2); border-radius: 8px; padding: 12px 14px;
+}
+.answer-cond { font-size: 12px; color: var(--muted); min-width: 120px; line-height: 1.4; }
+.answer-result { font-size: 13px; }
+.answer-result strong {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+}
+
+/* ── Overflow demo ───────────────────────────────────────────────────── */
+.overflow-demo {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 24px; margin-bottom: 32px;
+}
+.overflow-demo h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.overflow-inputs { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.overflow-inputs label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+.overflow-inputs input {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 8px 12px;
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; width: 160px;
+  outline: none;
+}
+.overflow-inputs input:focus { border-color: var(--accent); }
+.dtype-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.dtype-result-card {
+  border-radius: 8px; padding: 12px;
+  border: 1px solid var(--border); background: var(--surface2);
+}
+.dtype-result-card .r-name {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; margin-bottom: 6px;
+}
+.dtype-result-card .r-val {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+}
+.dtype-result-card.overflow { border-color: #ef4444; }
+.dtype-result-card.overflow .r-val { color: #ef4444; }
+.dtype-result-card.ok .r-val { color: #34d399; }
+.dtype-result-card.approx .r-val { color: #f59e0b; }
+
+/* ── Memory calculator ───────────────────────────────────────────────── */
+.mem-calc { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+.mem-calc h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.mem-inputs { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; align-items: flex-end; }
+.mem-inputs label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.mem-inputs input, .mem-inputs select {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 8px 12px; font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; width: 160px; outline: none;
+}
+.mem-inputs input:focus, .mem-inputs select:focus { border-color: var(--accent); }
+.mem-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.mem-result {
+  background: var(--surface2); border-radius: 8px; padding: 12px;
+  border: 1px solid var(--border);
+}
+.mem-result .mr-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+.mem-result .mr-val { font-size: 16px; font-weight: 600; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+.mem-result .mr-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.mem-result.highlight { border-color: var(--card-color-global, var(--accent)); }
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .dtype-grid { grid-template-columns: 1fr; }
+  .tabs { flex-wrap: wrap; }
+  .tab { min-width: 90px; font-size: 12px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="badge">
+      <span>●</span> NPTEL · Applied Accelerated AI · Week 04 · Segment 5
+    </div>
+    <h1>PyTorch Data Types</h1>
+    <p class="subtitle">
+      An interactive guide to float32, bfloat16, float16, TF32, int8, int4, fp8 and float64 —
+      what each one is, when to use it, and why the choice matters.
+    </p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('explorer')">🔍 Explorer</button>
+    <button class="tab" onclick="switchTab('compare')">⚖️ Compare All</button>
+    <button class="tab" onclick="switchTab('choose')">🧭 Decision Guide</button>
+    <button class="tab" onclick="switchTab('overflow')">⚡ Overflow Demo</button>
+    <button class="tab" onclick="switchTab('memory')">💾 Memory Calc</button>
+  </div>
+
+  <!-- ═══════════════ PANEL 1: EXPLORER ═══════════════════════════════ -->
+  <div class="panel active" id="panel-explorer">
+
+    <div class="section-label">Click any dtype to explore</div>
+
+    <div class="dtype-grid" id="dtype-grid"></div>
+    <div class="detail-panel" id="detail-panel"></div>
+
+  </div>
+
+  <!-- ═══════════════ PANEL 2: COMPARE ════════════════════════════════ -->
+  <div class="panel" id="panel-compare">
+    <div class="section-label">All dtypes at a glance</div>
+    <div class="compare-wrap">
+      <table id="compare-table"></table>
+    </div>
+  </div>
+
+  <!-- ═══════════════ PANEL 3: DECISION GUIDE ════════════════════════ -->
+  <div class="panel" id="panel-choose">
+    <div class="section-label">Which dtype should I use?</div>
+    <div class="decision-tree" id="decision-tree"></div>
+  </div>
+
+  <!-- ═══════════════ PANEL 4: OVERFLOW DEMO ════════════════════════ -->
+  <div class="panel" id="panel-overflow">
+    <div class="section-label">See how values change across dtypes</div>
+    <div class="overflow-demo">
+      <h3>Enter a value — see how each dtype represents it</h3>
+      <div class="overflow-inputs">
+        <div>
+          <label>Value</label>
+          <input type="number" id="ov-val" value="65600" step="any" oninput="runOverflow()">
+        </div>
+      </div>
+      <div class="dtype-results" id="ov-results"></div>
+    </div>
+
+    <div class="overflow-demo">
+      <h3>Common problematic values for AI training</h3>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px">
+      </div>
+      <div id="preset-buttons" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;"></div>
+      <div class="dtype-results" id="ov-results2"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ PANEL 5: MEMORY CALC ══════════════════════════ -->
+  <div class="panel" id="panel-memory">
+    <div class="section-label">Memory usage calculator</div>
+    <div class="mem-calc">
+      <h3>How much VRAM does my model need?</h3>
+      <div class="mem-inputs">
+        <div>
+          <label>Parameters (billions)</label>
+          <input type="number" id="mc-params" value="7" step="0.1" min="0.001" oninput="calcMem()">
+        </div>
+        <div>
+          <label>Use case</label>
+          <select id="mc-use" onchange="calcMem()">
+            <option value="infer">Inference (weights only)</option>
+            <option value="train">Training (weights + grads + optim)</option>
+          </select>
+        </div>
+      </div>
+      <div class="mem-results" id="mc-results"></div>
+      <div id="mc-note" style="margin-top:16px; font-size:12px; color:var(--muted); line-height:1.6;"></div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── Data ────────────────────────────────────────────────────────────────────
+const DTYPES = [
+  {
+    id: 'fp32', name: 'float32', full: 'torch.float32', color: '#60a5fa',
+    tag: 'Default', bits: 32, sign: 1, exp: 8, mant: 23, bytes: 4,
+    maxVal: 3.4e38, minNorm: 1.18e-38,
+    tflops_a100: 312, vram_per_1b: 4,
+    desc: 'The default PyTorch dtype. Full precision, widest dynamic range. Used for model weights in the master copy during mixed-precision training.',
+    when: [
+      'Default training when not yet optimising for speed',
+      'Master copy of weights in AMP mixed-precision training',
+      'Loss accumulation and gradient scaling',
+      'Optimiser state (Adam moment estimates)',
+      'Scientific computing where precision matters',
+    ],
+    avoid: [
+      'Inference on production models — wastes memory and compute',
+      'Large-scale training on modern GPUs — Tensor Cores underutilised',
+    ],
+    code: `<span class="cm"># Default — no need to specify</span>
+x = torch.<span class="fn">randn</span>(<span class="nu">3</span>, <span class="nu">4</span>)
+<span class="kw">print</span>(x.dtype)  <span class="cm"># torch.float32</span>
+
+<span class="cm"># Explicit</span>
+w = torch.<span class="fn">zeros</span>(<span class="nu">512</span>, <span class="nu">512</span>, dtype=torch.<span class="ty">float32</span>)
+
+<span class="cm"># Master weights in AMP</span>
+optimizer = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>())
+<span class="cm"># Optimiser stores fp32 master copy automatically</span>`
+  },
+  {
+    id: 'bf16', name: 'bfloat16', full: 'torch.bfloat16', color: '#34d399',
+    tag: '★ Recommended', bits: 16, sign: 1, exp: 8, mant: 7, bytes: 2,
+    maxVal: 3.4e38, minNorm: 1.18e-38,
+    tflops_a100: 624, vram_per_1b: 2,
+    desc: 'Brain Float 16. Keeps the full 8-bit exponent of float32 (same dynamic range) but truncates the mantissa. No overflow risk. The recommended training dtype on A100/H100.',
+    when: [
+      'Training on A100, H100, RTX 3090/4090 (Ampere/Hopper hardware)',
+      'AMP: torch.amp.autocast("cuda", dtype=torch.bfloat16)',
+      'LLM training: GPT, LLaMA, Mistral — all trained in BF16',
+      'Diffusion models (Stable Diffusion, FLUX)',
+      'Fine-tuning pretrained models',
+    ],
+    avoid: [
+      'GPUs older than Ampere (V100, T4) — not natively supported',
+      'When exact reproducibility of float32 results is required',
+    ],
+    code: `<span class="cm"># AMP training — recommended pattern</span>
+<span class="kw">with</span> torch.amp.<span class="fn">autocast</span>(<span class="st">"cuda"</span>, dtype=torch.<span class="ty">bfloat16</span>):
+    logits = model(x)
+    loss   = criterion(logits, y)
+loss.<span class="fn">backward</span>()  <span class="cm"># No GradScaler needed!</span>
+
+<span class="cm"># Direct cast</span>
+model = model.<span class="fn">to</span>(torch.<span class="ty">bfloat16</span>)
+
+<span class="cm"># Check support</span>
+torch.cuda.<span class="fn">is_bf16_supported</span>()  <span class="cm"># True on A100+</span>`
+  },
+  {
+    id: 'fp16', name: 'float16', full: 'torch.float16', color: '#f59e0b',
+    tag: 'Older GPUs', bits: 16, sign: 1, exp: 5, mant: 10, bytes: 2,
+    maxVal: 65504, minNorm: 6.1e-5,
+    tflops_a100: 624, vram_per_1b: 2,
+    desc: 'Half precision. Same speed as BF16 but only 5 exponent bits — narrow dynamic range. Values above ~65504 overflow to Inf. Requires loss scaling (GradScaler) to train stably.',
+    when: [
+      'GPUs without BF16 support: NVIDIA V100, Tesla T4, GTX 1080',
+      'Inference when speed matters and values are in safe range',
+      'With GradScaler to prevent gradient overflow during training',
+    ],
+    avoid: [
+      'Training without GradScaler — large gradients overflow to Inf',
+      'On A100/H100 — use BF16 instead (safer, same speed)',
+      'Models with wide activation ranges (transformers without careful init)',
+    ],
+    code: `<span class="cm"># FP16 AMP — requires GradScaler</span>
+scaler = torch.amp.<span class="fn">GradScaler</span>(<span class="st">"cuda"</span>)
+
+<span class="kw">with</span> torch.amp.<span class="fn">autocast</span>(<span class="st">"cuda"</span>, dtype=torch.<span class="ty">float16</span>):
+    logits = model(x)
+    loss   = criterion(logits, y)
+
+scaler.<span class="fn">scale</span>(loss).<span class="fn">backward</span>()
+scaler.<span class="fn">step</span>(optimizer)
+scaler.<span class="fn">update</span>()  <span class="cm"># adjusts scale factor</span>`
+  },
+  {
+    id: 'tf32', name: 'TF32', full: 'internal (matmul)', color: '#22d3ee',
+    tag: 'Free on A100', bits: 19, sign: 1, exp: 8, mant: 10, bytes: 4,
+    maxVal: 3.4e38, minNorm: 1.18e-38,
+    tflops_a100: 312, vram_per_1b: 4,
+    desc: 'TensorFloat-32. Not a storage dtype — an internal compute format used by CUDA matmul on Ampere+. FP32 inputs, FP32 outputs, but multiplication done at BF16 precision. ~3× faster than true FP32. Enabled by default in PyTorch.',
+    when: [
+      'Enabled by default — you are already using it on A100/H100',
+      'FP32 training on Ampere hardware with no code change needed',
+      'When you want FP32 memory footprint with faster matrix multiply',
+    ],
+    avoid: [
+      'Numerical reproducibility tests — disable for exact FP32',
+      'Pre-Ampere GPUs — TF32 is not available',
+    ],
+    code: `<span class="cm"># Check if enabled (True by default on A100)</span>
+torch.backends.cuda.matmul.<span class="ty">allow_tf32</span>  <span class="cm"># True</span>
+torch.backends.cudnn.<span class="ty">allow_tf32</span>        <span class="cm"># True</span>
+
+<span class="cm"># Disable for exact FP32 reproducibility</span>
+torch.backends.cuda.matmul.<span class="ty">allow_tf32</span> = <span class="kw">False</span>
+
+<span class="cm"># Or via set_float32_matmul_precision</span>
+torch.<span class="fn">set_float32_matmul_precision</span>(<span class="st">"highest"</span>)  <span class="cm"># exact FP32</span>
+torch.<span class="fn">set_float32_matmul_precision</span>(<span class="st">"high"</span>)     <span class="cm"># TF32</span>
+torch.<span class="fn">set_float32_matmul_precision</span>(<span class="st">"medium"</span>)   <span class="cm"># BF16</span>`
+  },
+  {
+    id: 'fp8', name: 'float8', full: 'torch.float8_e4m3fn', color: '#f472b6',
+    tag: 'H100 Only', bits: 8, sign: 1, exp: 4, mant: 3, bytes: 1,
+    maxVal: 448, minNorm: 0.015625,
+    tflops_a100: null, vram_per_1b: 1,
+    desc: 'Float8 (E4M3 variant). 8-bit floating point, only on H100/H200 hardware. Cuts VRAM in half vs BF16. Requires careful scaling — very narrow dynamic range. Used for large model training at scale.',
+    when: [
+      'Training massive models (70B+) on H100 clusters',
+      'Maximum throughput when VRAM is the bottleneck',
+      'With transformer_engine library for stable FP8 training',
+    ],
+    avoid: [
+      'A100 and older — hardware support does not exist',
+      'Without proper scaling recipes — values easily overflow',
+      'Small models where BF16 already fits — added complexity not worth it',
+    ],
+    code: `<span class="cm"># FP8 requires transformer_engine (TE)</span>
+<span class="kw">import</span> transformer_engine.pytorch <span class="kw">as</span> te
+<span class="kw">from</span> transformer_engine.common.recipe <span class="kw">import</span> Format, DelayedScaling
+
+fp8_format = Format.HYBRID  <span class="cm"># E4M3 forward, E5M2 backward</span>
+fp8_recipe = DelayedScaling(fp8_format=fp8_format)
+
+<span class="kw">with</span> te.fp8_autocast(fp8_recipe=fp8_recipe):
+    output = te_model(input_data)
+
+<span class="cm"># torch.float8_e4m3fn available in PyTorch 2.1+</span>
+x = torch.<span class="fn">zeros</span>(<span class="nu">4</span>, dtype=torch.<span class="ty">float8_e4m3fn</span>)`
+  },
+  {
+    id: 'int8', name: 'int8', full: 'torch.int8', color: '#a78bfa',
+    tag: 'Quantization', bits: 8, sign: 1, exp: 0, mant: 0, bytes: 1,
+    maxVal: 127, minNorm: -128,
+    tflops_a100: 1248, vram_per_1b: 1,
+    desc: 'Signed 8-bit integer. Not for training — for post-training quantisation (PTQ) at inference time. Models quantised to int8 are 4× smaller than FP32 with ~1% accuracy drop on most tasks.',
+    when: [
+      'Inference on edge devices and limited-memory deployments',
+      'Serving LLMs with bitsandbytes library (LLM.int8())',
+      'Mobile deployment with TFLite / CoreML / ONNX int8',
+      'When latency matters more than exact accuracy',
+    ],
+    avoid: [
+      'Training — integer arithmetic cannot propagate gradients',
+      'Tasks requiring high precision (scientific, financial)',
+    ],
+    code: `<span class="cm"># Load model in 8-bit (bitsandbytes)</span>
+<span class="kw">from</span> transformers <span class="kw">import</span> AutoModelForCausalLM
+model = AutoModelForCausalLM.<span class="fn">from_pretrained</span>(
+    <span class="st">"meta-llama/Llama-2-7b"</span>,
+    load_in_8bit=<span class="kw">True</span>,       <span class="cm"># LLM.int8()</span>
+    device_map=<span class="st">"auto"</span>,
+)
+
+<span class="cm"># Manual quantisation</span>
+x_int8 = x.<span class="fn">to</span>(torch.<span class="ty">int8</span>)   <span class="cm"># clips values to [-128, 127]</span>
+
+<span class="cm"># torch.quantization (PyTorch native)</span>
+model_int8 = torch.quantization.<span class="fn">quantize_dynamic</span>(
+    model, {torch.nn.Linear}, dtype=torch.<span class="ty">qint8</span>
+)`
+  },
+  {
+    id: 'int4', name: 'int4 / nf4', full: 'bitsandbytes / GGUF', color: '#fb7185',
+    tag: 'Extreme Quant', bits: 4, sign: 1, exp: 0, mant: 0, bytes: 0.5,
+    maxVal: 7, minNorm: -8,
+    tflops_a100: 1248, vram_per_1b: 0.5,
+    desc: 'Four-bit quantisation. Not a native PyTorch dtype — implemented in bitsandbytes (NF4 = Normalized Float 4) or GGUF format. Enables 70B models to run on a single 48 GB GPU. Used by QLoRA fine-tuning.',
+    when: [
+      'Running 70B parameter models on consumer hardware',
+      'QLoRA fine-tuning: freeze 4-bit base, train small adapters',
+      'Local inference with llama.cpp, Ollama (GGUF Q4_K_M)',
+      'Extreme memory constraint — when int8 still does not fit',
+    ],
+    avoid: [
+      'General training from scratch',
+      'Tasks requiring high accuracy — ~2-4% quality drop vs FP32',
+      'Without double quantisation — metadata can eat savings',
+    ],
+    code: `<span class="cm"># Load 4-bit model for QLoRA fine-tuning</span>
+<span class="kw">from</span> transformers <span class="kw">import</span> AutoModelForCausalLM, BitsAndBytesConfig
+
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=<span class="kw">True</span>,
+    bnb_4bit_quant_type=<span class="st">"nf4"</span>,       <span class="cm"># NormalFloat4</span>
+    bnb_4bit_compute_dtype=torch.<span class="ty">bfloat16</span>,
+    bnb_4bit_use_double_quant=<span class="kw">True</span>,   <span class="cm"># saves extra 0.4 bpw</span>
+)
+model = AutoModelForCausalLM.<span class="fn">from_pretrained</span>(
+    <span class="st">"meta-llama/Llama-2-70b"</span>,
+    quantization_config=bnb_config,
+    device_map=<span class="st">"auto"</span>,
+)`
+  },
+  {
+    id: 'fp64', name: 'float64', full: 'torch.float64', color: '#94a3b8',
+    tag: 'Scientific', bits: 64, sign: 1, exp: 11, mant: 52, bytes: 8,
+    maxVal: 1.8e308, minNorm: 2.2e-308,
+    tflops_a100: 19.5, vram_per_1b: 8,
+    desc: 'Double precision. 64-bit floating point, the default for NumPy. Rarely used in deep learning — 8 bytes per element, ~20 TFLOPS on A100 vs 312 for FP32. Use for loss accumulation in extreme-precision scenarios.',
+    when: [
+      'Scientific simulation requiring exact double precision',
+      'Testing numerical gradients (torch.autograd.gradcheck)',
+      'Loss accumulation across many batches where fp32 rounds',
+      'Interop with NumPy arrays (default numpy dtype)',
+    ],
+    avoid: [
+      'Neural network training — wastes 2× memory vs FP32, ~16× slower than BF16',
+      'Any GPU-heavy workload — Tensor Cores do not accelerate FP64',
+    ],
+    code: `<span class="cm"># NumPy arrays are float64 by default</span>
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+arr = np.<span class="fn">ones</span>(<span class="nu">3</span>)  <span class="cm"># float64</span>
+t   = torch.<span class="fn">from_numpy</span>(arr)  <span class="cm"># also float64</span>
+
+<span class="cm"># Gradient check (needs double precision)</span>
+torch.autograd.<span class="fn">gradcheck</span>(
+    my_fn,
+    inputs.<span class="fn">double</span>(),  <span class="cm"># cast to float64 for gradcheck</span>
+    eps=<span class="nu">1e-6</span>,
+)
+
+<span class="cm"># Explicit</span>
+x = x.<span class="fn">to</span>(torch.<span class="ty">float64</span>)  <span class="cm"># or .double()</span>`
+  },
+];
+
+// ── Bit diagram renderer ─────────────────────────────────────────────────────
+function renderBits(dtype) {
+  if (dtype.id === 'int8')  return renderIntBits(8);
+  if (dtype.id === 'int4')  return renderIntBits(4);
+  if (dtype.id === 'tf32')  return renderTF32Bits();
+  if (dtype.id === 'fp8')   return renderFloatBits(1, 4, 3);
+  return renderFloatBits(dtype.sign, dtype.exp, dtype.mant);
+}
+
+function renderFloatBits(sign, exp, mant) {
+  const total = sign + exp + mant;
+  const scale = total > 24 ? 8 : (total > 16 ? 9 : 12);
+  let html = `<div class="bit-diagram">`;
+  html += `<div class="bit-group">`;
+  for (let i = 0; i < sign; i++) html += `<div class="bit sign" style="width:${scale}px" title="Sign bit"></div>`;
+  html += `</div><div class="bit-group">`;
+  for (let i = 0; i < exp; i++) html += `<div class="bit exp" style="width:${scale}px" title="Exponent"></div>`;
+  html += `</div><div class="bit-group">`;
+  for (let i = 0; i < mant; i++) html += `<div class="bit mant" style="width:${scale}px" title="Mantissa"></div>`;
+  html += `</div></div>`;
+  html += `<div class="bit-legend">
+    <span><span class="dot" style="background:#ef4444"></span>${sign} Sign</span>
+    <span><span class="dot" style="background:#f59e0b"></span>${exp} Exponent</span>
+    <span><span class="dot" style="background:#22c55e"></span>${mant} Mantissa</span>
+    <span style="color:var(--muted)">= ${sign+exp+mant} bits total</span>
+  </div>`;
+  return html;
+}
+
+function renderIntBits(n) {
+  let html = `<div class="bit-diagram"><div class="bit-group">`;
+  html += `<div class="bit sign" style="width:12px" title="Sign"></div>`;
+  for (let i = 1; i < n; i++) html += `<div class="bit mant" style="width:12px" title="Value"></div>`;
+  html += `</div></div><div class="bit-legend">
+    <span><span class="dot" style="background:#ef4444"></span>1 Sign</span>
+    <span><span class="dot" style="background:#22c55e"></span>${n-1} Value</span>
+    <span style="color:var(--muted)">= ${n} bits (integer)</span>
+  </div>`;
+  return html;
+}
+
+function renderTF32Bits() {
+  // FP32 input, but matmul done with 10 mantissa bits
+  let html = `<div class="bit-diagram"><div class="bit-group">
+    <div class="bit sign" style="width:9px" title="Sign"></div></div>
+    <div class="bit-group">`;
+  for (let i=0;i<8;i++) html += `<div class="bit exp" style="width:9px"></div>`;
+  html += `</div><div class="bit-group">`;
+  for (let i=0;i<10;i++) html += `<div class="bit mant" style="width:9px" title="Used in compute"></div>`;
+  for (let i=0;i<13;i++) html += `<div class="bit mant" style="width:9px;opacity:.25" title="Dropped in matmul"></div>`;
+  html += `</div></div><div class="bit-legend">
+    <span><span class="dot" style="background:#ef4444"></span>1 Sign</span>
+    <span><span class="dot" style="background:#f59e0b"></span>8 Exponent (same as FP32)</span>
+    <span><span class="dot" style="background:#22c55e"></span>10 Mantissa used · 13 dropped</span>
+  </div>`;
+  return html;
+}
+
+// ── Explorer panel ───────────────────────────────────────────────────────────
+let selectedId = null;
+
+function buildExplorer() {
+  const grid = document.getElementById('dtype-grid');
+  grid.innerHTML = DTYPES.map(d => `
+    <div class="dtype-card" id="card-${d.id}" style="--card-color:${d.color}"
+         onclick="selectDtype('${d.id}')">
+      <div class="dtype-header">
+        <div>
+          <div class="dtype-name">${d.name}</div>
+          <div class="dtype-full">${d.full}</div>
+        </div>
+        <div class="dtype-tag">${d.tag}</div>
+      </div>
+      ${renderBits(d)}
+      <div class="dtype-stats">
+        <div class="stat">
+          <div class="stat-label">Bits</div>
+          <div class="stat-value">${d.bits}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Bytes/elem</div>
+          <div class="stat-value">${d.bytes}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Max value</div>
+          <div class="stat-value" style="font-size:11px">${fmtNum(d.maxVal)}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">A100 TFLOPS</div>
+          <div class="stat-value">${d.tflops_a100 ? d.tflops_a100 : 'N/A'}</div>
+        </div>
+      </div>
+      <div class="dtype-desc">${d.desc}</div>
+    </div>
+  `).join('');
+}
+
+function selectDtype(id) {
+  selectedId = id;
+  document.querySelectorAll('.dtype-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById(`card-${id}`)?.classList.add('selected');
+
+  const d = DTYPES.find(x => x.id === id);
+  const panel = document.getElementById('detail-panel');
+  panel.style.setProperty('--card-color', d.color);
+  panel.classList.add('visible');
+
+  panel.innerHTML = `
+    <div class="detail-header">
+      <div class="dtype-name" style="color:${d.color}">${d.name}</div>
+      <div class="dtype-tag" style="--card-color:${d.color}">${d.tag}</div>
+    </div>
+    ${renderBits(d)}
+    <div class="detail-body">
+      <div class="detail-section">
+        <h3>✓ Use when</h3>
+        <ul class="use-case-list" style="--card-color:${d.color}">
+          ${d.when.map(w => `<li>${w}</li>`).join('')}
+        </ul>
+        <h3 style="margin-top:20px">✗ Avoid when</h3>
+        <ul class="warning-list">
+          ${d.avoid.map(a => `<li>${a}</li>`).join('')}
+        </ul>
+      </div>
+      <div class="detail-section">
+        <h3>Code example</h3>
+        <div class="code-block">${d.code}</div>
+      </div>
+    </div>
+  `;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Compare table ─────────────────────────────────────────────────────────────
+function buildCompare() {
+  const maxTflops = 1248;
+  const rows = DTYPES.map(d => {
+    const tflops = d.tflops_a100 || 0;
+    const pct = (tflops / maxTflops * 100).toFixed(0);
+    const overflow = d.maxVal < 1e5 ? `<span class="cross">Low risk</span>` :
+                     d.maxVal < 1e20 ? `<span class="partial">Moderate</span>` :
+                     `<span class="check">Safe</span>`;
+    const training = (d.id==='fp32'||d.id==='bf16'||d.id==='fp16'||d.id==='tf32')
+      ? `<span class="check">✓</span>` : (d.id==='fp8' ? `<span class="partial">~</span>` : `<span class="cross">✗</span>`);
+    const infer = (d.id==='fp64') ? `<span class="partial">~</span>` : `<span class="check">✓</span>`;
+    return `<tr>
+      <td><span class="dtype-pill"><span class="dtype-dot" style="background:${d.color}"></span>${d.name}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace">${d.bits}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${d.bytes}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${fmtNum(d.maxVal)}</td>
+      <td class="bar-cell">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;margin-bottom:4px">${tflops ? tflops+' T' : '—'}</div>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${d.color}"></div></div>
+      </td>
+      <td>${training}</td>
+      <td>${infer}</td>
+      <td style="font-size:12px;color:var(--muted)">${d.tag}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('compare-table').innerHTML = `
+    <thead><tr>
+      <th>Dtype</th><th>Bits</th><th>Bytes</th><th>Max value</th>
+      <th>A100 TFLOPS</th><th>Training</th><th>Inference</th><th>Best for</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  `;
+}
+
+// ── Decision tree ─────────────────────────────────────────────────────────────
+const DECISIONS = [
+  {
+    q: 'Are you training or running inference?',
+    answers: [
+      { cond: 'Training a new model', result: 'Start with <strong style="color:#34d399">BF16 AMP</strong> on A100/H100, or <strong style="color:#f59e0b">FP16 + GradScaler</strong> on V100. Master weights stay in <strong style="color:#60a5fa">FP32</strong>.' },
+      { cond: 'Running inference', result: 'Use <strong style="color:#34d399">BF16</strong> for speed, or quantise to <strong style="color:#a78bfa">INT8</strong> / <strong style="color:#fb7185">INT4/NF4</strong> for maximum memory savings.' },
+    ]
+  },
+  {
+    q: 'Which GPU generation are you running on?',
+    answers: [
+      { cond: 'A100 / H100 / RTX 3090/4090 (Ampere+)', result: '<strong style="color:#34d399">BF16</strong> — no GradScaler needed, same dynamic range as FP32, Tensor Cores give 2× FP32 speed. <strong style="color:#22d3ee">TF32</strong> is already on for free.' },
+      { cond: 'V100 / T4 (Volta/Turing)', result: '<strong style="color:#f59e0b">FP16</strong> with <strong style="color:#60a5fa">GradScaler</strong> — BF16 is not supported, FP16 gives 2× speed but requires loss scaling.' },
+      { cond: 'RTX 2080 / older consumer', result: '<strong style="color:#60a5fa">FP32</strong> or <strong style="color:#f59e0b">FP16</strong> — limited Tensor Core support. FP16 still halves memory even without speed gain.' },
+      { cond: 'H100 (Hopper) training at scale', result: '<strong style="color:#f472b6">FP8</strong> via transformer_engine — 2× vs BF16 in VRAM, maximum throughput for 70B+ models.' },
+    ]
+  },
+  {
+    q: 'Is your model too large to fit in VRAM?',
+    answers: [
+      { cond: 'Model fits in FP16/BF16', result: 'Stay in <strong style="color:#34d399">BF16</strong> for training. No quantisation needed.' },
+      { cond: 'Fits in INT8 (4× smaller than FP32)', result: 'Use <strong style="color:#a78bfa">INT8</strong> via bitsandbytes (LLM.int8()) or torch.quantization for inference.' },
+      { cond: 'Need INT4 to fit (8× smaller)', result: '<strong style="color:#fb7185">NF4 / GGUF Q4</strong> — QLoRA fine-tuning or llama.cpp inference. ~2-4% quality loss.' },
+    ]
+  },
+  {
+    q: 'Do you need exact numerical reproducibility?',
+    answers: [
+      { cond: 'Yes — science / finance / gradient checks', result: '<strong style="color:#94a3b8">FP64</strong> or <strong style="color:#60a5fa">FP32</strong> with TF32 disabled: <code>torch.set_float32_matmul_precision("highest")</code>' },
+      { cond: 'No — standard ML training and inference', result: '<strong style="color:#34d399">BF16</strong> or <strong style="color:#22d3ee">TF32</strong> (default). ~0.001% numerical difference from FP32 is acceptable.' },
+    ]
+  },
+  {
+    q: 'Are you hitting "loss is NaN or Inf" during training?',
+    answers: [
+      { cond: 'Training in FP16', result: 'Gradient overflow — add or increase <strong style="color:#60a5fa">GradScaler</strong>: <code>scaler = torch.amp.GradScaler("cuda")</code>' },
+      { cond: 'Training in BF16', result: 'BF16 cannot overflow (same exponent as FP32). Check: learning rate too high, bad weight init, or data issue.' },
+      { cond: 'Training in FP32', result: 'FP32 cannot overflow during normal training. Check your loss function, labels, or learning rate.' },
+    ]
+  },
+];
+
+function buildDecision() {
+  const tree = document.getElementById('decision-tree');
+  tree.innerHTML = DECISIONS.map((node, i) => `
+    <div class="decision-node" id="dnode-${i}">
+      <div class="decision-question" onclick="toggleDecision(${i})">
+        <span><strong style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:12px">Q${i+1}</strong> &nbsp; ${node.q}</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="decision-answers">
+        ${node.answers.map(a => `
+          <div class="decision-answer">
+            <div class="answer-cond">${a.cond}</div>
+            <div class="answer-result">→ ${a.result}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleDecision(i) {
+  const node = document.getElementById(`dnode-${i}`);
+  node.classList.toggle('open');
+}
+
+// ── Overflow demo ─────────────────────────────────────────────────────────────
+const OVERFLOW_DTYPES = [
+  { name: 'float64', max: 1.8e308, min: 5e-324, isFloat: true },
+  { name: 'float32', max: 3.4e38,  min: 1.2e-38,  isFloat: true },
+  { name: 'TF32',    max: 3.4e38,  min: 1.2e-38,  isFloat: true },
+  { name: 'bfloat16',max: 3.4e38,  min: 1.2e-38,  isFloat: true, mantBits: 7 },
+  { name: 'float16', max: 65504,   min: 6.1e-5,   isFloat: true, mantBits: 10 },
+  { name: 'float8 (E4M3)', max: 448, min: 0.0156, isFloat: true },
+  { name: 'int8',    max: 127,     min: -128,      isFloat: false },
+  { name: 'int4',    max: 7,       min: -8,        isFloat: false },
+];
+
+function approxValue(v, dtype) {
+  if (!dtype.isFloat) {
+    if (v > dtype.max) return { val: 'OVERFLOW', status: 'overflow' };
+    if (v < dtype.min) return { val: 'UNDERFLOW', status: 'overflow' };
+    return { val: Math.round(v).toString(), status: 'ok' };
+  }
+  if (Math.abs(v) > dtype.max && v !== 0) return { val: 'inf', status: 'overflow' };
+  if (Math.abs(v) < dtype.min && v !== 0) return { val: '0 (underflow)', status: 'overflow' };
+  // Approximate mantissa truncation
+  if (dtype.mantBits) {
+    const prec = Math.pow(2, dtype.mantBits);
+    const approx = Math.round(v * prec) / prec;
+    const diff = Math.abs((approx - v) / (v || 1));
+    return { val: approx.toPrecision(5), status: diff > 0.001 ? 'approx' : 'ok' };
+  }
+  return { val: v.toPrecision(7), status: 'ok' };
+}
+
+function runOverflow(preset) {
+  const val = preset !== undefined ? preset : parseFloat(document.getElementById('ov-val').value) || 0;
+  const el = document.getElementById('ov-results');
+  el.innerHTML = OVERFLOW_DTYPES.map(d => {
+    const { val: rv, status } = approxValue(val, d);
+    return `<div class="dtype-result-card ${status}">
+      <div class="r-name" style="color:${getDtypeColor(d.name)}">${d.name}</div>
+      <div class="r-val">${rv}</div>
+    </div>`;
+  }).join('');
+}
+
+const PRESETS = [
+  { label: '65504 (FP16 max)',    val: 65504 },
+  { label: '65600 (above FP16)', val: 65600 },
+  { label: '448 (FP8 max)',       val: 448 },
+  { label: '0.00001 (tiny)',      val: 0.00001 },
+  { label: '-1.5 (negative)',     val: -1.5 },
+  { label: '1e10 (large)',        val: 1e10 },
+  { label: '0.1 (common LR)',     val: 0.1 },
+];
+
+function buildOverflow() {
+  const pb = document.getElementById('preset-buttons');
+  pb.innerHTML = PRESETS.map(p => `
+    <button onclick="selectPreset(${p.val})"
+      style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
+             padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;
+             font-family:'JetBrains Mono',monospace;transition:all .2s"
+      onmouseover="this.style.borderColor='var(--accent)'"
+      onmouseout="this.style.borderColor='var(--border)'">
+      ${p.label}
+    </button>
+  `).join('');
+  runOverflow();
+}
+
+let selectedPreset = null;
+function selectPreset(val) {
+  selectedPreset = val;
+  const el = document.getElementById('ov-results2');
+  el.innerHTML = OVERFLOW_DTYPES.map(d => {
+    const { val: rv, status } = approxValue(val, d);
+    return `<div class="dtype-result-card ${status}">
+      <div class="r-name" style="color:${getDtypeColor(d.name)}">${d.name}</div>
+      <div class="r-val">${rv}</div>
+    </div>`;
+  }).join('');
+}
+
+function getDtypeColor(name) {
+  const map = {
+    'float64': '#94a3b8', 'float32': '#60a5fa', 'TF32': '#22d3ee',
+    'bfloat16': '#34d399', 'float16': '#f59e0b',
+    'float8 (E4M3)': '#f472b6', 'int8': '#a78bfa', 'int4': '#fb7185',
+  };
+  return map[name] || '#64748b';
+}
+
+// ── Memory calculator ─────────────────────────────────────────────────────────
+function calcMem() {
+  const params = parseFloat(document.getElementById('mc-params').value) || 0;
+  const use    = document.getElementById('mc-use').value;
+  const B = params * 1e9;
+  const isTraining = use === 'train';
+
+  const configs = [
+    { name: 'float64',  color: '#94a3b8', bpe: 8  },
+    { name: 'float32',  color: '#60a5fa', bpe: 4  },
+    { name: 'bfloat16', color: '#34d399', bpe: 2  },
+    { name: 'float16',  color: '#f59e0b', bpe: 2  },
+    { name: 'int8',     color: '#a78bfa', bpe: 1  },
+    { name: 'int4/NF4', color: '#fb7185', bpe: 0.5 },
+  ];
+
+  const el = document.getElementById('mc-results');
+  el.innerHTML = configs.map(c => {
+    // weights + (training: grads + adam states in fp32)
+    let total = B * c.bpe;
+    if (isTraining) {
+      // grads in same dtype
+      total += B * c.bpe;
+      // Adam: 2 moment tensors in fp32 always
+      total += B * 4 * 2;
+    }
+    const gb = (total / 1e9).toFixed(1);
+    return `<div class="mem-result" style="--card-color:${c.color}">
+      <div class="mr-name" style="color:${c.color}">${c.name}</div>
+      <div class="mr-val">${gb} GB</div>
+      <div class="mr-sub">${isTraining ? 'weights+grads+optim' : 'weights only'}</div>
+    </div>`;
+  }).join('');
+
+  const fp32gb = (B * 4 * (isTraining ? 13 : 1) / 1e9).toFixed(0);
+  const bf16gb = (B * 2 * (isTraining ? 1 : 1) + (isTraining ? B*4*2 : 0)) / 1e9;
+
+  document.getElementById('mc-note').innerHTML = `
+    <strong>Notes for training:</strong> Weights (dtype) + gradients (dtype) + Adam state (always FP32: 2 × 4 bytes/param).<br>
+    A ${params}B parameter model: FP32 ≈ ${fp32gb} GB training | BF16 AMP ≈ ${bf16gb.toFixed(1)} GB training.<br>
+    INT4/NF4 values are for inference only — gradients cannot propagate through integer arithmetic.
+  `;
+}
+
+// ── Tab switcher ──────────────────────────────────────────────────────────────
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('panel-' + id).classList.add('active');
+}
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  if (n >= 1e38) return '3.4×10³⁸';
+  if (n >= 1e308) return '1.8×10³⁰⁸';
+  if (n >= 1e8)  return n.toExponential(1);
+  if (n <= 0.01) return n.toExponential(1);
+  return n.toLocaleString();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+buildExplorer();
+buildCompare();
+buildDecision();
+buildOverflow();
+calcMem();
+
+// Auto-open first decision question
+toggleDecision(0);
+
+// Select fp32 by default
+selectDtype('fp32');
+</script>
+</body>
+</html>
