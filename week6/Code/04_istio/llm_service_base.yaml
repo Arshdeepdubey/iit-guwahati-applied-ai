@@ -1,0 +1,59 @@
+# The "already in production" stable model deployment, plus the Service
+# fronting it. This is the state of the world BEFORE the canary rollout
+# lab (slides 10-11) begins -- the platform team's baseline. Deploy this
+# first so DestinationRule/VirtualService/canary have a stable subset to
+# route to.
+#
+# NOTE: the deck names this backend two different ways across slides --
+# slide 6's HTTPRoute backendRef says `llm-service`, slide 11's
+# VirtualService destination host says `llm-svc`. This demo uses
+# `llm-svc` to match slide 11 (the Istio canary demo it's paired with);
+# see 06_networking_config/httproute.yaml for the separate `llm-service`
+# name used with the Gateway API demo. Worth fixing in the deck so
+# students don't think these are the same resource.
+#
+# Apply:  kubectl apply -f llm_service_base.yaml
+# Check:  kubectl get pods -n team-alpha -l app=llm-svc
+#         kubectl get svc -n team-alpha llm-svc
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-svc-stable
+  namespace: team-alpha
+  labels:
+    app: llm-svc
+    version: stable
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llm-svc
+      version: stable
+  template:
+    metadata:
+      labels:
+        app: llm-svc
+        version: stable
+    spec:
+      containers:
+        - name: llm-svc
+          image: hashicorp/http-echo
+          args:
+            - "-listen=:5678"
+            - "-text=response from STABLE (v1)"
+          ports:
+            - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-svc
+  namespace: team-alpha
+spec:
+  selector:
+    app: llm-svc
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 5678

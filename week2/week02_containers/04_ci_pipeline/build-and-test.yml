@@ -1,0 +1,131 @@
+# GitHub Actions workflow: build an AI container on every PR, run a
+# smoke test and unit tests, scan for vulnerabilities, and push to
+# GHCR on merges to main.
+#
+# Place this file at: .github/workflows/build-and-test.yml
+#
+# Notes:
+#   - Vanilla ubuntu-latest runners have no GPU. Tests that require a
+#     GPU need self-hosted runners (see the job `gpu-tests`, guarded
+#     by a runner label so it only picks up if you have one).
+#   - Image scanning via Trivy; SBOM via anchore/sbom-action.
+
+name: build-and-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ----------------------------------------------------------------
+  # 1. Build image and run CPU-side checks.
+  # ----------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Authenticate to GHCR using the workflow's GITHUB_TOKEN.
+      - name: Log in to registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Derive image tags from branch/commit.
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=ref,event=pr
+
+      # Build (and push only on push-to-main); use GHA cache backend
+      # for faster rebuilds.
+      - name: Build image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          load: ${{ github.event_name != 'push' }}
+
+      # CPU-only smoke test: does the image load PyTorch successfully?
+      - name: Smoke test (CPU)
+        run: |
+          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker run --rm "$TAG" python3 -c "\
+          import torch; \
+          print('torch', torch.__version__); \
+          print('CUDA built-in:', torch.backends.cudnn.is_available())"
+
+      # Unit tests: mount tests/ into the image and run pytest.
+      - name: Run unit tests
+        run: |
+          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker run --rm -v "$PWD/tests":/tests -w /tests "$TAG" \
+            pytest -q --maxfail=1
+
+      # Scan for HIGH and CRITICAL vulnerabilities.
+      - name: Vulnerability scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      # Generate an SBOM artifact for supply-chain auditing.
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  # ----------------------------------------------------------------
+  # 2. GPU tests. Runs only if a self-hosted GPU runner is registered
+  #    with the label "gpu". Otherwise the job is simply skipped.
+  # ----------------------------------------------------------------
+  gpu-tests:
+    needs: build
+    runs-on: [self-hosted, gpu]
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run GPU smoke test
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          docker run --rm --gpus all \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }} \
+            python3 -c "import torch; assert torch.cuda.is_available()"

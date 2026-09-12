@@ -1,0 +1,15 @@
+# Normally this file is produced by `pip-compile` from requirements.in.
+# A real generated file would include the full transitive closure with
+# hashes. For demo purposes we list the top-level pins only.
+#
+# To regenerate:
+#   pip-compile --generate-hashes --output-file=requirements.txt requirements.in
+
+torch==2.11.0
+torchvision==0.26.0
+jupyterlab==4.2.0
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.9.0
+scikit-learn==1.4.2
+ipywidgets==8.1.2

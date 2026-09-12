@@ -1,0 +1,21 @@
+# Defines the "stable" and "canary" subsets that VirtualService routes
+# split traffic across, based on the `version` pod label (Session 2,
+# slide 11).
+#
+# Apply:  kubectl apply -f 09_istio_destinationrule.yaml
+# Check:  kubectl get destinationrule -n team-alpha llm-svc -o yaml
+
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: llm-svc
+  namespace: team-alpha
+spec:
+  host: llm-svc
+  subsets:
+    - name: stable
+      labels:
+        version: stable
+    - name: canary
+      labels:
+        version: canary

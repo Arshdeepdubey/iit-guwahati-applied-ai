@@ -1,0 +1,24 @@
+# 90/10 canary split: 90% of requests to llm-svc go to the stable
+# subset, 10% to canary (Session 2, slide 11).
+#
+# Apply:  kubectl apply -f 10_virtualservice.yaml
+# Check:  kubectl get virtualservice -n team-alpha llm-inference-vs -o yaml
+
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: llm-inference-vs
+  namespace: team-alpha
+spec:
+  hosts:
+    - llm-svc
+  http:
+    - route:
+        - destination:
+            host: llm-svc
+            subset: stable
+          weight: 90
+        - destination:
+            host: llm-svc
+            subset: canary
+          weight: 10

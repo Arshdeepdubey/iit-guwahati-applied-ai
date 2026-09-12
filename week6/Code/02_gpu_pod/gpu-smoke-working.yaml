@@ -1,0 +1,57 @@
+# WORKING version of gpu-smoke.yaml for a nested WSL2 + minikube setup.
+#
+# Why this exists: the original gpu-smoke.yaml (same folder) is correct
+# Kubernetes YAML and matches what a real GPU-Operator-managed cluster
+# needs. But on a laptop running minikube *inside* WSL2 *inside* Docker
+# Desktop, there are 3 layers of container nesting between the physical
+# GPU and this pod. At that depth, containerd's automatic NVIDIA device
+# injection (which normally happens transparently) does not fire for
+# pods created through the Kubernetes CRI path, even though the GPU is
+# correctly scheduled as an extended resource. See ../scripts/README.md
+# for the full explanation and the one-time node setup this file depends on.
+#
+# Prerequisite: run scripts/04_setup_minikube_gpu.sh first (labels the
+# node, configures containerd, and fixes the device plugin).
+#
+# Apply:  kubectl apply -f gpu-smoke-working.yaml
+# Check:  kubectl logs gpu-smoke
+# Clean:  kubectl delete -f gpu-smoke-working.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-smoke
+spec:
+  restartPolicy: Never
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+  nodeSelector:
+    accelerator: "nvidia"
+  containers:
+    - name: cuda
+      # Must match the node's own OS (check with: docker exec minikube cat /etc/os-release)
+      # so the injected host libraries don't hit a glibc ABI mismatch.
+      image: debian:12-slim
+      command: ["/host-bin/nvidia-smi"]
+      securityContext:
+        privileged: true      # needed for the raw hostPath device/library mounts below
+      env:
+        - name: LD_LIBRARY_PATH
+          value: /host-libs
+      volumeMounts:
+        - name: host-libs
+          mountPath: /host-libs
+        - name: host-bin
+          mountPath: /host-bin
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+  volumes:
+    - name: host-libs
+      hostPath:
+        path: /usr/lib/x86_64-linux-gnu   # where the node keeps the real NVIDIA driver libs
+    - name: host-bin
+      hostPath:
+        path: /usr/bin                     # where the node keeps the real nvidia-smi binary
