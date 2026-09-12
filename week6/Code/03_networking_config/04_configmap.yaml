@@ -1,0 +1,15 @@
+# Externalises training hyperparameters so the training image never
+# needs to be rebuilt to tune a run (Session 2, slide 7-8).
+#
+# Apply:  kubectl apply -f 04_configmap.yaml
+# Check:  kubectl get configmap train-config -o yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: train-config
+data:
+  batch_size: "128"
+  learning_rate: "3e-4"
+  max_steps: "50000"
+  model_arch: llama3-8b

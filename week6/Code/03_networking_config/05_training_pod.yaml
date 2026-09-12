@@ -1,0 +1,23 @@
+# Pod consumes both the ConfigMap and the Secret via envFrom -- neither
+# is baked into the image, so tuning a hyperparameter or rotating a
+# token never requires a rebuild (Session 2, slide 9).
+#
+# Apply:  kubectl apply -f 05_training_pod.yaml
+# Check:  kubectl exec -it training-pod -- env | grep -E "batch_size|learning_rate|max_steps|model_arch|WANDB|HF_TOKEN"
+# Clean:  kubectl delete -f 05_training_pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: training-pod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: trainer
+      image: busybox:1.36
+      command: ["sh", "-c", "sleep 3600"]
+      envFrom:
+        - configMapRef:
+            name: train-config
+        - secretRef:
+            name: ml-tokens

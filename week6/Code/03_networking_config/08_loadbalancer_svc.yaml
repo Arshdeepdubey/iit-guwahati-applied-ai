@@ -1,0 +1,26 @@
+# Exposes the tiny-inference Deployment (from ../01_inference_service)
+# externally via a cloud/LB-provisioned IP -- the production pattern
+# for a real inference endpoint (Session 2, slide 2).
+#
+# Requires the tiny-inference Deployment to already be running:
+#   kubectl apply -f ../01_inference_service/tiny-inference-deployment.yaml
+#
+# On Docker Desktop's Kubernetes, LoadBalancer Services are published
+# on localhost automatically (no cloud LB controller needed).
+#
+# Apply:  kubectl apply -f 08_loadbalancer_svc.yaml
+# Check:  kubectl get svc tiny-inference-lb
+#         curl http://localhost:8080/health
+# Clean:  kubectl delete -f 08_loadbalancer_svc.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiny-inference-lb
+spec:
+  type: LoadBalancer
+  selector:
+    app: tiny-inference
+  ports:
+    - port: 8080
+      targetPort: 8000

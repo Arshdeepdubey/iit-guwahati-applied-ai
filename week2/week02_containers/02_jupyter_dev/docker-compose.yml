@@ -1,0 +1,49 @@
+# docker-compose.yml
+#
+# Brings up a GPU-accelerated Jupyter Lab with your local working
+# directory bind-mounted into /workspace inside the container.
+#
+# Start:   docker compose up --build
+# Stop:    docker compose down
+#
+# After start, open: http://localhost:8888/
+
+services:
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-dev-jupyter
+
+    ports:
+      - "8888:8888"
+
+    volumes:
+      # Mount the project directory so edits on the host show up live
+      # inside the container.
+      - .:/workspace
+      # Optional: a named volume for large datasets / caches that
+      # survives container rebuilds.
+      - dataset-cache:/data
+
+    # PyTorch DataLoader workers share memory via /dev/shm. Docker's
+    # default 64 MB will cause cryptic crashes; bump it.
+    shm_size: "8gb"
+
+    # GPU allocation via the compose v3.8+ syntax. Requires
+    # nvidia-container-toolkit on the host.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # Friendly environment variables for notebook use.
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      PYTHONPATH: "/workspace"
+
+volumes:
+  dataset-cache:

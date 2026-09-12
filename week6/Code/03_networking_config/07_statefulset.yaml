@@ -1,0 +1,31 @@
+# 3-replica StatefulSet bound to the training-worker headless Service.
+# Pods get stable, ordinal-indexed names -- worker-0, worker-1, worker-2
+# -- and each is individually addressable at
+# worker-<N>.training-worker.<namespace>.svc.cluster.local
+# (Session 2, slides 2-3).
+#
+# Apply:  kubectl apply -f 07_statefulset.yaml
+# Check:  kubectl exec -it worker-0 -- nslookup worker-1.training-worker
+# Clean:  kubectl delete -f 07_statefulset.yaml
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: worker
+spec:
+  serviceName: training-worker
+  replicas: 3
+  selector:
+    matchLabels:
+      app: training-worker
+  template:
+    metadata:
+      labels:
+        app: training-worker
+    spec:
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          ports:
+            - containerPort: 29500

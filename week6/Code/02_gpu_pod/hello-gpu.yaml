@@ -1,0 +1,52 @@
+# Simplest possible "hello world" on a GPU-scheduled pod. Same idea as
+# gpu-smoke-working.yaml (same folder) -- nodeSelector + toleration to
+# land on the GPU node, resources.limits["nvidia.com/gpu"]: 1 to actually
+# claim the GPU as a scheduled resource, and the hostPath/privileged
+# workaround this nested WSL2 setup needs to see the driver at all.
+#
+# Apply:  kubectl apply -f hello-gpu.yaml
+# Check:  kubectl logs hello-gpu
+# Clean:  kubectl delete -f hello-gpu.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hello-gpu
+spec:
+  restartPolicy: Never
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+  nodeSelector:
+    accelerator: "nvidia"
+  containers:
+    - name: hello
+      image: debian:12-slim
+      command:
+        - sh
+        - -c
+        - |
+          echo "Hello World from a GPU-scheduled Kubernetes pod!"
+          echo "Running on GPU:"
+          /host-bin/nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+      securityContext:
+        privileged: true
+      env:
+        - name: LD_LIBRARY_PATH
+          value: /host-libs
+      volumeMounts:
+        - name: host-libs
+          mountPath: /host-libs
+        - name: host-bin
+          mountPath: /host-bin
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+  volumes:
+    - name: host-libs
+      hostPath:
+        path: /usr/lib/x86_64-linux-gnu
+    - name: host-bin
+      hostPath:
+        path: /usr/bin

@@ -1,0 +1,46 @@
+# Keep build context small and avoid shipping junk into images.
+
+# Python cruft
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# Virtual environments (don't ship a local venv into the image)
+.venv/
+venv/
+env/
+
+# Version control
+.git/
+.gitignore
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Data and models - these should be mounted at runtime, not baked in
+data/
+datasets/
+checkpoints/
+*.ckpt
+*.pt
+*.safetensors
+
+# Secrets - never ship these
+.env
+.env.*
+*.pem
+*.key
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Node (in case of mixed projects)
+node_modules/

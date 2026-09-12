@@ -1,0 +1,38 @@
+# The Gateway resource itself (owned by the platform team, references
+# the GatewayClass) -- not shown as a standalone slide, but required
+# for the HTTPRoute in slide 6 to have something to attach to. Creating
+# this makes Istio provision a real Envoy proxy + LoadBalancer Service.
+#
+# Listener port is 8082, not the usual 80: on Docker Desktop's local
+# Kubernetes, LoadBalancer Services are published on the host by a
+# small per-Service proxy container (cloud-provider-kind) that binds
+# the Service port directly on localhost. Docker Desktop's own engine
+# backend already listens on host port 80 for itself, so a second
+# Service also asking for host port 80 fails with
+# "SyncLoadBalancerFailed ... exit status 125" and stays <pending>
+# forever. On a real cluster (a cloud LB, or any cluster with MetalLB)
+# this does not happen -- every LoadBalancer Service gets its own IP,
+# so multiple Services can each use port 80. 8082 was picked over 8081
+# because 8081/8080 are common defaults other local dev tools (and this
+# course's own tiny-inference-lb on 8080) reach for -- before applying,
+# check whatever port you choose is actually free:
+#   Get-NetTCPConnection -LocalPort 8082 -State Listen   (PowerShell)
+# before assuming a stuck <pending> external IP is a manifest bug.
+#
+# Apply:  kubectl apply -f gateway.yaml
+# Check:  kubectl get gateway -n team-alpha inference-gateway
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: inference-gateway
+  namespace: team-alpha
+spec:
+  gatewayClassName: inference-gateway
+  listeners:
+    - name: http
+      port: 8082
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same

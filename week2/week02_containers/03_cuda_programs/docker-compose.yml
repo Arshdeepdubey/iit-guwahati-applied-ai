@@ -1,0 +1,26 @@
+services:
+  cuda-programs:
+    build: .
+    image: cuda-programs:local
+    container_name: 03_cuda_programs
+    working_dir: /src
+    volumes:
+      - .:/src
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: >
+      bash -c "
+        echo '=== Building CUDA programs ===' &&
+        make all &&
+        echo '' &&
+        echo '=== vector_add ===' &&
+        ./vector_add &&
+        echo '' &&
+        echo '=== bandwidth_test ===' &&
+        ./bandwidth_test
+      "

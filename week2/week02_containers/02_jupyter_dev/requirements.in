@@ -1,0 +1,16 @@
+# Top-level dependencies only. Regenerate requirements.txt with:
+#
+#   pip install pip-tools
+#   pip-compile --generate-hashes --output-file=requirements.txt requirements.in
+#
+# The generated requirements.txt pins every transitive dependency with
+# its hash, giving you a reproducible build.
+
+torch==2.11.0
+torchvision==0.26.0
+jupyterlab==4.2.0
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.9.0
+scikit-learn==1.4.2
+ipywidgets==8.1.2

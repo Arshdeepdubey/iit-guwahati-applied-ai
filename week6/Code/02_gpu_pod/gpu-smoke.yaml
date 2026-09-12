@@ -1,0 +1,33 @@
+# Minimal GPU pod. Runs `nvidia-smi` inside the cluster to verify that
+# the NVIDIA device plugin is advertising `nvidia.com/gpu` and that the
+# GPU is visible to containers.
+#
+# Apply:  kubectl apply -f gpu-smoke.yaml
+# Check:  kubectl logs gpu-smoke
+# Clean:  kubectl delete -f gpu-smoke.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-smoke
+spec:
+  restartPolicy: Never
+  # Tolerate taints commonly applied to GPU nodes; without this
+  # toleration, the scheduler won't place the pod on a tainted node.
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+  # Node selector pins this pod to nodes labelled as GPU workers.
+  # Labels vary by cluster; inspect with: kubectl get nodes --show-labels
+  nodeSelector:
+    accelerator: "nvidia"
+  containers:
+    - name: cuda
+      image: nvidia/cuda:13.0.0-base-ubuntu24.04
+      command: ["nvidia-smi"]
+      resources:
+        limits:
+          # This is the extended resource advertised by the NVIDIA
+          # device plugin DaemonSet.
+          nvidia.com/gpu: 1

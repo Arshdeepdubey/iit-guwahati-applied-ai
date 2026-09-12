@@ -1,0 +1,33 @@
+name: ai-image
+
+on: [push]
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-24.04
+    env:
+      IMG: cuda-programs:${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Stage 1 — BUILD
+      - name: Build image
+        run: docker build -t $IMG .
+
+      # Stage 2 — SMOKE TEST (CPU runner: GPU checks are gracefully skipped)
+      - name: Smoke test
+        run: docker run --rm $IMG python3 smoke_test.py
+
+      # Stage 3 — SCAN
+      - name: Scan for CVEs
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy image --severity CRITICAL --exit-code 1 $IMG
+
+      # Stage 4 — PUSH (main branch only)
+      - name: Push to registry
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker tag $IMG registry.example.com/$IMG
+          docker push registry.example.com/$IMG

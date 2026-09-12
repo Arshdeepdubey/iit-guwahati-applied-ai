@@ -1,0 +1,35 @@
+# The canary (v2) deployment -- same Service (llm-svc), different
+# `version` label, so DestinationRule's "canary" subset selects it
+# (Session 2, slide 16).
+#
+# Apply:  kubectl apply -f 11_inference_v2.yaml
+# Check:  kubectl get pods -n team-alpha -l version=canary
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-svc-canary
+  namespace: team-alpha
+  labels:
+    app: llm-svc
+    version: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-svc
+      version: canary
+  template:
+    metadata:
+      labels:
+        app: llm-svc
+        version: canary
+    spec:
+      containers:
+        - name: llm-svc
+          image: hashicorp/http-echo
+          args:
+            - "-listen=:5678"
+            - "-text=response from CANARY (v2)"
+          ports:
+            - containerPort: 5678

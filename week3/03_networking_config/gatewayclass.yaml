@@ -1,0 +1,16 @@
+# Gateway API replaces Ingress as the standard HTTP/gRPC routing layer
+# (Session 2, slide 4). The platform team creates ONE GatewayClass per
+# cluster controller -- app teams never touch this resource.
+#
+# controllerName must match the controller Istio actually registers;
+# verify with: kubectl get gatewayclasses -o wide
+#
+# Apply:  kubectl apply -f gatewayclass.yaml
+# Check:  kubectl get gatewayclass inference-gateway
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: inference-gateway
+spec:
+  controllerName: istio.io/gateway-controller
