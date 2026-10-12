@@ -21,6 +21,7 @@ import torch.nn as nn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
+import uvicorn
 
 # ----------------------------------------------------------------
 # Model definition. Kept tiny so the container starts fast in demos.
@@ -147,5 +148,4 @@ def prom_metrics():
 
 if __name__ == "__main__":
     # For local runs only. In-cluster, uvicorn is the container CMD.
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
